@@ -394,7 +394,11 @@ export function Webmail() {
     setDraft(null);
     dirtyRef.current = false;
     busyRef.current = false;
-    setNotice('Message sent to the local sandbox.');
+    setNotice(
+      session?.mode === 'simulation'
+        ? 'Message sent to the local sandbox.'
+        : 'Message accepted for delivery.',
+    );
     if (isReply && selectedRef.current) void loadConversation(selectedRef.current, true);
     else if (id) {
       selectedRef.current = id;
@@ -484,7 +488,7 @@ export function Webmail() {
           </a>
           <div className="wm-top-actions">
             <span className="wm-sandbox">
-              Local mail sandbox <span>· .test addresses only</span>
+              Your email <span>· Sign in to your mailbox</span>
             </span>
             <button
               className="icon-button"
@@ -529,7 +533,15 @@ export function Webmail() {
             <div className="wm-workspace-title">
               <span className="wm-kicker">YOUR PERSONAL SPACE</span>
               <span className="wm-sandbox">
-                Local mail sandbox <span>· .test addresses only</span>
+                {session?.mode === 'simulation' ? (
+                  <>
+                    Local mail sandbox <span>· .test addresses only</span>
+                  </>
+                ) : (
+                  <>
+                    Your email <span>· Secure mailbox</span>
+                  </>
+                )}
               </span>
               <h2>Mail, made simple.</h2>
             </div>
@@ -937,6 +949,7 @@ export function Webmail() {
                               draft={draft}
                               organizer={organizer}
                               sender={session.user.address}
+                              simulation={session.mode === 'simulation'}
                               onChange={setDraft}
                               onClose={() =>
                                 guard(() => {

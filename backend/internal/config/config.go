@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ type Config struct {
 	BootstrapEmail, BootstrapPassword                string
 	MailHost, WebmailURL, StalwartURL, StalwartToken string
 	MailpitURL                                       string
+	StalwartEdition, WebmailSessionKey               string
 	SecureCookies                                    bool
 	MaxMailboxes                                     int
 }
@@ -28,6 +30,7 @@ func Load() (Config, error) {
 		Mode: env("MAIL_PROVIDER", "simulation"), BootstrapEmail: strings.ToLower(os.Getenv("BOOTSTRAP_EMAIL")),
 		BootstrapPassword: os.Getenv("BOOTSTRAP_PASSWORD"), MailHost: env("MAIL_HOST", "mail.example.com"),
 		WebmailURL: os.Getenv("WEBMAIL_URL"), StalwartURL: os.Getenv("STALWART_URL"), StalwartToken: os.Getenv("STALWART_TOKEN"),
+		StalwartEdition: env("STALWART_EDITION", "enterprise"), WebmailSessionKey: os.Getenv("WEBMAIL_SESSION_KEY"),
 		MailpitURL: strings.TrimRight(os.Getenv("MAILPIT_URL"), "/"),
 	}
 	var err error
@@ -52,6 +55,15 @@ func Load() (Config, error) {
 	}
 	if c.Mode == "simulation" && !local {
 		return c, fmt.Errorf("simulation is only allowed on localhost")
+	}
+	if c.StalwartEdition != "enterprise" && c.StalwartEdition != "community" {
+		return c, fmt.Errorf("STALWART_EDITION must be enterprise or community")
+	}
+	if c.WebmailSessionKey != "" {
+		key, e := hex.DecodeString(c.WebmailSessionKey)
+		if e != nil || len(key) != 32 {
+			return c, fmt.Errorf("WEBMAIL_SESSION_KEY must be 64 hexadecimal characters")
+		}
 	}
 	if c.Mode == "stalwart" {
 		s, e := url.Parse(c.StalwartURL)

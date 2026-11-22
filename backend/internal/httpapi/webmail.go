@@ -23,6 +23,7 @@ type mailboxUser struct {
 	ID      string `json:"id"`
 	Address string `json:"address"`
 	Name    string `json:"name"`
+	mail    webmail.Store
 }
 type mailboxSession struct {
 	User mailboxUser
@@ -32,8 +33,11 @@ type mailboxEndpoint func(http.ResponseWriter, *http.Request, mailboxUser) error
 
 // webmailEnabled prevents this local capture adapter from becoming a live mail API.
 func (s *Server) webmailEnabled() error {
-	if s.Service.Config.Mode != "simulation" {
-		return &service.Error{Status: 404, Message: "Local webmail is unavailable in live mail mode"}
+	if s.Service.Config.Mode == "stalwart" {
+		if s.Service.Config.WebmailSessionKey == "" {
+			return &service.Error{Status: 503, Message: "Live webmail is not configured"}
+		}
+		return nil
 	}
 	if s.Service.Config.MailpitURL == "" {
 		return &service.Error{Status: 503, Message: "Start the local mail demo with MAILPIT_URL configured"}
@@ -58,7 +62,18 @@ func (s *Server) mailboxSession(r *http.Request) (mailboxSession, error) {
 	if err != nil {
 		return session, err
 	}
-	err = s.Service.DB.QueryRow(r.Context(), `SELECT m.id,m.address,m.name,s.csrf FROM webmail_sessions s JOIN mailboxes m ON m.id=s.mailbox_id WHERE s.token_hash=$1 AND s.expires_at>now() AND m.status='active'`, tokenHash(cookie.Value)).Scan(&session.User.ID, &session.User.Address, &session.User.Name, &session.CSRF)
+	var encrypted string
+	err = s.Service.DB.QueryRow(r.Context(), `SELECT m.id,m.address,m.name,s.csrf,s.encrypted_credentials FROM webmail_sessions s JOIN mailboxes m ON m.id=s.mailbox_id WHERE s.token_hash=$1 AND s.expires_at>now() AND m.status='active'`, tokenHash(cookie.Value)).Scan(&session.User.ID, &session.User.Address, &session.User.Name, &session.CSRF, &encrypted)
+	if err == nil {
+		session.User.mail = s.capture
+		if s.Service.Config.Mode == "stalwart" {
+			credentials, e := webmail.OpenCredentials(s.Service.Config.WebmailSessionKey, tokenHash(cookie.Value), encrypted)
+			if e != nil || credentials.Username != session.User.Address {
+				return session, errors.New("invalid live mailbox session")
+			}
+			session.User.mail = webmail.NewJMAP(s.Service.Config.StalwartURL, credentials)
+		}
+	}
 	return session, err
 }
 
@@ -104,6 +119,10 @@ func (s *Server) webmailLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(in.Email))
+	if s.Service.Config.Mode == "stalwart" {
+		s.liveWebmailLogin(w, r, email, in.Password)
+		return
+	}
 	token, csrf := store.ID(), store.ID()
 	err := s.Service.DB.Locked(r.Context(), func(tx pgx.Tx) error {
 		var id, hash string
@@ -135,7 +154,7 @@ func (s *Server) webmailSession(w http.ResponseWriter, r *http.Request, u mailbo
 	if err != nil {
 		return err
 	}
-	return respond(w, 200, map[string]any{"user": u, "csrf": session.CSRF, "mode": "simulation"})
+	return respond(w, 200, map[string]any{"user": u, "csrf": session.CSRF, "mode": s.Service.Config.Mode})
 }
 
 // webmailLogout revokes this mailbox token while leaving the admin login untouched.
@@ -150,12 +169,12 @@ func (s *Server) webmailLogout(w http.ResponseWriter, r *http.Request, _ mailbox
 
 // captureUnavailable gives readers a recoverable message without leaking upstream data.
 func captureUnavailable() error {
-	return &service.Error{Status: 503, Message: "The local mail catcher is unavailable. Start Mailpit and retry."}
+	return &service.Error{Status: 503, Message: "The mail service could not complete this request. Please retry or contact your administrator."}
 }
 
 // mailList merges per-mailbox read state without trusting Mailpit's global Read flag.
 func (s *Server) mailList(r *http.Request, u mailboxUser) ([]webmail.Summary, error) {
-	list, err := s.capture.List(r.Context())
+	list, err := u.mail.List(r.Context())
 	if err != nil {
 		return nil, captureUnavailable()
 	}
@@ -176,7 +195,7 @@ func (s *Server) mailList(r *http.Request, u mailboxUser) ([]webmail.Summary, er
 		return nil, err
 	}
 	for i := range list {
-		list[i].Read = read[list[i].ID]
+		list[i].Read = list[i].Read || read[list[i].ID]
 	}
 	return list, nil
 }
@@ -196,7 +215,7 @@ func (s *Server) webmailMessages(w http.ResponseWriter, r *http.Request, u mailb
 	}
 	out := []webmail.Summary{}
 	for _, m := range list {
-		if (folder == "inbox" && m.ReceivedBy(u.Address)) || (folder == "sent" && strings.EqualFold(m.From.Address, u.Address)) {
+		if (folder == "inbox" && m.ReceivedBy(u.Address)) || (folder == "sent" && m.SentBy(u.Address)) {
 			out = append(out, m)
 		}
 	}
@@ -223,7 +242,7 @@ func (s *Server) webmailMessage(w http.ResponseWriter, r *http.Request, u mailbo
 	if err != nil {
 		return err
 	}
-	detail, err := s.capture.Detail(r.Context(), m)
+	detail, err := u.mail.Detail(r.Context(), m)
 	if err != nil {
 		return captureUnavailable()
 	}
@@ -250,7 +269,7 @@ func (s *Server) webmailConversation(w http.ResponseWriter, r *http.Request, u m
 	if !found {
 		return &service.Error{Status: 404, Message: "Message not found"}
 	}
-	conversation, err := s.capture.Conversation(r.Context(), visible, r.PathValue("id"))
+	conversation, err := u.mail.Conversation(r.Context(), visible, r.PathValue("id"))
 	if err != nil {
 		return captureUnavailable()
 	}
@@ -262,6 +281,11 @@ func (s *Server) webmailRead(w http.ResponseWriter, r *http.Request, u mailboxUs
 	m, err := s.ownedMessage(r, u, r.PathValue("id"))
 	if err != nil {
 		return err
+	}
+	if live, ok := u.mail.(*webmail.JMAP); ok {
+		if err := live.MarkRead(r.Context(), m.ID); err != nil {
+			return captureUnavailable()
+		}
 	}
 	_, err = s.Service.DB.Exec(r.Context(), `INSERT INTO webmail_read_messages(mailbox_id,message_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, u.ID, m.ID)
 	if err != nil {
@@ -276,7 +300,7 @@ func (s *Server) webmailAttachment(w http.ResponseWriter, r *http.Request, u mai
 	if err != nil {
 		return err
 	}
-	detail, err := s.capture.Detail(r.Context(), m)
+	detail, err := u.mail.Detail(r.Context(), m)
 	if err != nil {
 		return captureUnavailable()
 	}
@@ -284,7 +308,7 @@ func (s *Server) webmailAttachment(w http.ResponseWriter, r *http.Request, u mai
 		if a.ID != r.PathValue("attachment") {
 			continue
 		}
-		data, err := s.capture.Download(r.Context(), m.ID, a.ID)
+		data, err := u.mail.Download(r.Context(), m.ID, a.ID)
 		if err != nil {
 			return captureUnavailable()
 		}
@@ -304,7 +328,7 @@ func (s *Server) webmailPreview(w http.ResponseWriter, r *http.Request, u mailbo
 	if err != nil {
 		return err
 	}
-	detail, err := s.capture.Detail(r.Context(), m)
+	detail, err := u.mail.Detail(r.Context(), m)
 	if err != nil {
 		return captureUnavailable()
 	}
@@ -312,7 +336,7 @@ func (s *Server) webmailPreview(w http.ResponseWriter, r *http.Request, u mailbo
 		if a.ID != r.PathValue("attachment") {
 			continue
 		}
-		data, err := s.capture.Download(r.Context(), m.ID, a.ID)
+		data, err := u.mail.Download(r.Context(), m.ID, a.ID)
 		if err != nil {
 			return captureUnavailable()
 		}
@@ -357,16 +381,16 @@ func (s *Server) webmailSend(w http.ResponseWriter, r *http.Request, u mailboxUs
 	}
 	to := strings.Split(in.To, ",")
 	if len(to) > 10 {
-		return &service.Error{Status: 400, Message: "Send to at most 10 test recipients"}
+		return &service.Error{Status: 400, Message: "Send to at most 10 recipients"}
 	}
 	for i, address := range to {
 		address = strings.ToLower(strings.TrimSpace(address))
-		if !service.ValidEmail(address) || !strings.HasSuffix(address, ".test") || strings.ContainsAny(address, "\r\n") {
-			return &service.Error{Status: 400, Message: "Local mail can only be sent to .test email addresses"}
+		if !service.ValidEmail(address) || (s.Service.Config.Mode == "simulation" && !strings.HasSuffix(address, ".test")) || strings.ContainsAny(address, "\r\n") {
+			return &service.Error{Status: 400, Message: "Enter valid recipients; local simulation accepts only .test addresses"}
 		}
 		to[i] = address
 	}
-	if !strings.HasSuffix(u.Address, ".test") {
+	if s.Service.Config.Mode == "simulation" && !strings.HasSuffix(u.Address, ".test") {
 		return &service.Error{Status: 400, Message: "Use a .test mailbox for local mail"}
 	}
 	var replyID string
@@ -375,15 +399,63 @@ func (s *Server) webmailSend(w http.ResponseWriter, r *http.Request, u mailboxUs
 		if err != nil {
 			return err
 		}
-		detail, err := s.capture.Detail(r.Context(), m)
+		detail, err := u.mail.Detail(r.Context(), m)
 		if err != nil {
 			return captureUnavailable()
 		}
 		replyID = detail.MessageID
 	}
-	id, err := s.capture.Send(r.Context(), webmail.Address{Name: u.Name, Address: u.Address}, to, in.Subject, in.Text, replyID, in.Attachments, in.HTML)
+	id, err := u.mail.Send(r.Context(), webmail.Address{Name: u.Name, Address: u.Address}, to, in.Subject, in.Text, replyID, in.Attachments, in.HTML)
 	if err != nil {
 		return captureUnavailable()
 	}
 	return respond(w, 200, map[string]any{"ok": true, "id": id})
+}
+
+// liveWebmailLogin authenticates against the engine, then saves only encrypted,
+// short-lived credentials for the exact active mailbox registered in Postharbor.
+func (s *Server) liveWebmailLogin(w http.ResponseWriter, r *http.Request, email, password string) {
+	reject := func() { writeError(w, &service.Error{Status: 401, Message: "Mailbox email or password is incorrect"}) }
+	if !service.ValidEmail(email) || len(password) > 256 {
+		reject()
+		return
+	}
+	var id string
+	err := s.Service.DB.QueryRow(r.Context(), `SELECT id FROM mailboxes WHERE address=$1 AND status='active'`, email).Scan(&id)
+	if err != nil {
+		reject()
+		return
+	}
+	client := webmail.NewJMAP(s.Service.Config.StalwartURL, webmail.Credentials{Username: email, Password: password})
+	if err = client.Authenticate(r.Context()); err != nil {
+		reject()
+		return
+	}
+	token, csrf := store.ID(), store.ID()
+	encrypted, err := webmail.SealCredentials(s.Service.Config.WebmailSessionKey, tokenHash(token), client.Credentials)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	err = s.Service.DB.Locked(r.Context(), func(tx pgx.Tx) error {
+		// Recheck status after network authentication so deletion cannot race login.
+		var active bool
+		if e := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM mailboxes WHERE id=$1 AND status='active')`, id).Scan(&active); e != nil {
+			return e
+		}
+		if !active {
+			return &service.Error{Status: 401, Message: "Mailbox is unavailable"}
+		}
+		if _, e := tx.Exec(r.Context(), `DELETE FROM webmail_sessions WHERE expires_at<now() OR mailbox_id=$1`, id); e != nil {
+			return e
+		}
+		_, e := tx.Exec(r.Context(), `INSERT INTO webmail_sessions(token_hash,mailbox_id,csrf,expires_at,encrypted_credentials) VALUES($1,$2,$3,now()+interval '12 hours',$4)`, tokenHash(token), id, csrf, encrypted)
+		return e
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	s.webmailCookie(w, token, 12*60*60)
+	respond(w, 200, map[string]string{"csrf": csrf})
 }

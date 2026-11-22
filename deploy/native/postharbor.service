@@ -1,0 +1,23 @@
+# Native Go API and compiled React UI. Nginx terminates public HTTPS.
+[Unit]
+Description=Postharbor email control panel
+After=network.target postgresql.service
+
+[Service]
+User=postharbor
+Group=postharbor
+WorkingDirectory=/var/www/postharbor/current
+EnvironmentFile=/etc/postharbor/app.env
+ExecStart=/var/www/postharbor/current/server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=512M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

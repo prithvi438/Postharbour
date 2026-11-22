@@ -63,7 +63,7 @@ export function MailSignIn({ onLogin }: { onLogin: () => Promise<void> }) {
                 name="email"
                 type="email"
                 autoComplete="username"
-                placeholder="alex@harbor.test"
+                placeholder="you@yourdomain.com"
                 required
               />
             </label>

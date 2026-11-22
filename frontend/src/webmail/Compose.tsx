@@ -38,6 +38,7 @@ export function Compose({
   draft,
   organizer,
   sender,
+  simulation = true,
   onChange,
   onClose,
   onSent,
@@ -46,6 +47,7 @@ export function Compose({
   draft: Draft;
   organizer?: Organizer;
   sender: string;
+  simulation?: boolean;
   onChange: (draft: Draft) => void;
   onClose: () => void;
   onSent: (id?: string) => void;
@@ -105,9 +107,16 @@ export function Compose({
     if (
       !recipients.length ||
       recipients.length > 10 ||
-      recipients.some((value) => !/^[^\s@]+@[^\s@]+\.test$/.test(value))
+      recipients.some(
+        (value) =>
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || (simulation && !value.endsWith('.test')),
+      )
     ) {
-      setError('Enter up to 10 .test recipients, separated by commas.');
+      setError(
+        simulation
+          ? 'Enter up to 10 .test recipients, separated by commas.'
+          : 'Enter up to 10 valid email recipients, separated by commas.',
+      );
       return;
     }
     if (!draft.text.trim() && !attachments.length) {
@@ -181,7 +190,7 @@ export function Compose({
                 <span>To</span>
                 <input
                   required
-                  placeholder="hello@harbor.test"
+                  placeholder={simulation ? 'hello@harbor.test' : 'name@example.com'}
                   value={draft.to}
                   list="mail-recipients"
                   onChange={(event) => {

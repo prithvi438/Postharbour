@@ -43,7 +43,9 @@ func run() error {
 	defer db.Close()
 	var provider mail.Provider = mail.Simulation{}
 	if cfg.Mode == "stalwart" {
-		provider = mail.NewStalwart(cfg.StalwartURL, cfg.StalwartToken)
+		live := mail.NewStalwart(cfg.StalwartURL, cfg.StalwartToken)
+		live.Community = cfg.StalwartEdition == "community"
+		provider = live
 	}
 	svc := &service.Service{DB: db, Mail: provider, DNS: net.DefaultResolver, Config: cfg}
 	if err = svc.Bootstrap(startup); err != nil {

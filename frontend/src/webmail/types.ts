@@ -6,7 +6,7 @@ export interface MailAddress {
 export interface MailSession {
   user: { id: string; address: string; name: string };
   csrf: string;
-  mode: 'simulation';
+  mode: 'simulation' | 'stalwart';
 }
 export interface MailSummary {
   id: string;

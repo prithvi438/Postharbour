@@ -43,3 +43,25 @@ func TestCaptureURLStaysLocal(t *testing.T) {
 		}
 	}
 }
+
+// TestLiveSettings rejects accidental edition typos and invalid session secrets.
+func TestLiveSettings(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test")
+	t.Setenv("APP_ORIGIN", "https://panel.example.com")
+	t.Setenv("MAIL_PROVIDER", "stalwart")
+	t.Setenv("STALWART_URL", "https://mail.example.com")
+	t.Setenv("STALWART_TOKEN", "test-token")
+	t.Setenv("STALWART_EDITION", "community")
+	t.Setenv("WEBMAIL_SESSION_KEY", "short")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid session key")
+	}
+	t.Setenv("WEBMAIL_SESSION_KEY", "abababababababababababababababababababababababababababababababab")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STALWART_EDITION", "comunity")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid edition")
+	}
+}

@@ -9,12 +9,12 @@ mailboxes. It has a responsive glassmorphism interface, light/dark themes, and a
 installable Progressive Web App (PWA). It is designed to start on a 2-core, 8 GB RAM
 VPS with five mailboxes, rather than requiring a cluster of services.
 
-**The administration dashboard manages email hosting; the local `/mail` interface
-lets mailbox users read, compose, and reply to test email.** This local webmail
-uses Mailpit for capture and does not deliver public email. Stalwart remains the
-live mail engine; live reading/composing requires a compatible client or separately
-installed webmail application. Browser installation does not create a native
-mail client or an App Store application.
+**The dashboard manages domains and mailboxes. The React `/mail` interface reads,
+composes and replies to email.** Local mode uses Mailpit captures; live mode uses
+mailbox-authenticated Stalwart JMAP. Free Community hosting supports one business;
+Enterprise supports native multi-business tenants. See [native VPS hosting](docs/NATIVE_HOSTING.md)
+for the Git + Nginx + systemd setup without Docker. Browser installation creates a
+PWA, not an App Store application.
 
 ## What works
 
@@ -34,7 +34,7 @@ mail client or an App Store application.
 - Local simulation mode, optional Mailpit email capture, Docker deployment files, tests, CI, and documented extension points.
 
 The live adapter targets Stalwart's **JMAP management API** (`x:Tenant`, `x:Domain`,
-`x:Account`). Native tenant isolation requires **Stalwart Enterprise**. Older
+`x:Account`). Native tenant isolation requires **Stalwart Enterprise**. The explicit Community adapter supports one business without native tenants. Older
 Stalwart releases using `/api/principal` are not compatible with this adapter.
 Our MIT license does not grant a Stalwart Enterprise subscription.
 

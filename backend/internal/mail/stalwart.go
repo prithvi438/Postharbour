@@ -18,11 +18,12 @@ import (
 type Stalwart struct {
 	URL, Token string
 	Client     *http.Client
+	Community  bool
 }
 
 // NewStalwart sets bounded request times and refuses credential-bearing redirects.
 func NewStalwart(url, token string) *Stalwart {
-	return &Stalwart{strings.TrimRight(url, "/") + "/jmap/", token, &http.Client{
+	return &Stalwart{URL: strings.TrimRight(url, "/") + "/jmap/", Token: token, Client: &http.Client{
 		Timeout:       12 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
@@ -129,6 +130,10 @@ func (s *Stalwart) create(ctx context.Context, kind string, object map[string]an
 
 // EnsureTenant maps the stable application ID to one native Enterprise tenant.
 func (s *Stalwart) EnsureTenant(ctx context.Context, t model.Tenant) (string, error) {
+	// Community hosts exactly one application business; it has no native tenant.
+	if s.Community {
+		return "community-" + t.ID, nil
+	}
 	name := "postharbor-" + t.ID
 	if id, err := s.find(ctx, "Tenant", name, "name", name, "", ""); id != "" || err != nil {
 		return id, err
@@ -148,29 +153,44 @@ func (s *Stalwart) EnsureDomain(ctx context.Context, t model.Tenant, d model.Dom
 	if id, err := s.find(ctx, "Domain", d.Name, "name", d.Name, "description", marker); id != "" || err != nil {
 		return id, err
 	}
-	return s.create(ctx, "Domain", map[string]any{
-		"name":           d.Name,
-		"memberTenantId": t.ProviderID,
-		"description":    marker,
-		"dkimManagement": map[string]string{"@type": "Automatic"},
-	})
+	object := map[string]any{
+		"name":                  d.Name,
+		"memberTenantId":        t.ProviderID,
+		"description":           marker,
+		"dkimManagement":        map[string]string{"@type": "Automatic"},
+		"certificateManagement": map[string]string{"@type": "Manual"},
+	}
+	if s.Community {
+		delete(object, "memberTenantId")
+	}
+	return s.create(ctx, "Domain", object)
 }
 
 // EnsureMailbox uses a bcrypt credential supplied by the service. The clear-text
 // password is never sent to this adapter or stored in the application database.
 func (s *Stalwart) EnsureMailbox(ctx context.Context, t model.Tenant, d model.Domain, m model.Mailbox, hash string) (string, error) {
 	local := strings.SplitN(m.Address, "@", 2)[0]
-	if id, err := s.find(ctx, "Account", local, "emailAddress", m.Address, "externalId", m.ID); id != "" || err != nil {
+	markerField, marker := "externalId", m.ID
+	if s.Community {
+		markerField, marker = "description", "postharbor:"+m.ID
+	}
+	if id, err := s.find(ctx, "Account", local, "emailAddress", m.Address, markerField, marker); id != "" || err != nil {
 		return id, err
 	}
-	return s.create(ctx, "Account", map[string]any{
+	object := map[string]any{
 		"@type": "User", "name": local,
 		"domainId": d.ProviderID, "memberTenantId": t.ProviderID,
 		"externalId": m.ID, "description": m.Name,
 		"roles":       map[string]string{"@type": "User"},
 		"quotas":      map[string]int64{"maxDiskQuota": int64(m.QuotaMB) * 1024 * 1024},
 		"credentials": passwordCredentials(hash),
-	})
+	}
+	if s.Community {
+		delete(object, "memberTenantId")
+		delete(object, "externalId")
+		object["description"] = marker
+	}
+	return s.create(ctx, "Account", object)
 }
 
 // passwordCredentials encodes a Stalwart List<Credential> as a numbered object.

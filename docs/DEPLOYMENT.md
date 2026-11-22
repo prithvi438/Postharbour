@@ -1,5 +1,9 @@
 # Deploy on an Ubuntu VPS
 
+For native Git + Nginx hosting without Docker, including the free single-business
+adapter and real React webmail, use [NATIVE_HOSTING.md](NATIVE_HOSTING.md).
+The guide below covers the Enterprise + Docker alternative.
+
 ## What will run
 
 - Go serves the compiled React dashboard and its API.
@@ -110,8 +114,9 @@ Do not include a trailing slash in `APP_ORIGIN`. `STALWART_URL` is the base URL;
 the adapter adds `/jmap/`. Use a URL-safe database password, such as the output of
 `openssl rand -hex 32`, because Compose inserts it into a PostgreSQL URL. If you
 already have a webmail application, set its HTTPS URL in `WEBMAIL_URL`.
-The built-in `/mail` screen is currently a local Mailpit sandbox, disabled for
-live-provider mode. It does not replace this production mail-client setup.
+To enable the built-in `/mail` screen in live mode, set `WEBMAIL_SESSION_KEY` to
+a random 64-character hexadecimal value. See NATIVE_HOSTING.md for credential
+encryption and current reader limits.
 Keep `MAILPIT_URL` unset in production and do not deploy the local Mailpit viewer.
 
 Do not commit `.env`, backup files, database dumps, API tokens, or mailbox data.

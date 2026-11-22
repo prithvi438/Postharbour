@@ -24,17 +24,19 @@ type Address struct {
 
 // Summary contains list metadata. Read is populated from the caller's database state.
 type Summary struct {
-	ID          string    `json:"id"`
-	From        Address   `json:"from"`
-	To          []Address `json:"to"`
-	Subject     string    `json:"subject"`
-	Snippet     string    `json:"snippet"`
-	Date        string    `json:"date"`
-	Read        bool      `json:"read"`
-	Attachments int       `json:"attachments"`
-	Cc          []Address `json:"-"`
-	Bcc         []Address `json:"-"`
-	MessageID   string    `json:"-"`
+	ID                     string    `json:"id"`
+	From                   Address   `json:"from"`
+	To                     []Address `json:"to"`
+	Subject                string    `json:"subject"`
+	Snippet                string    `json:"snippet"`
+	Date                   string    `json:"date"`
+	Read                   bool      `json:"read"`
+	Attachments            int       `json:"attachments"`
+	Cc                     []Address `json:"-"`
+	Bcc                    []Address `json:"-"`
+	MessageID              string    `json:"-"`
+	ThreadID, MailboxOwner string    `json:"-"`
+	InInbox, InSent        bool      `json:"-"`
 }
 
 // Attachment exposes metadata only; actual downloads are separately authorized.
@@ -57,6 +59,9 @@ type Detail struct {
 
 // ReceivedBy checks actual address membership, not a substring or display name.
 func (m Summary) ReceivedBy(address string) bool {
+	if m.MailboxOwner != "" {
+		return strings.EqualFold(m.MailboxOwner, address) && m.InInbox
+	}
 	for _, group := range [][]Address{m.To, m.Cc, m.Bcc} {
 		for _, recipient := range group {
 			if strings.EqualFold(recipient.Address, address) {
@@ -69,6 +74,9 @@ func (m Summary) ReceivedBy(address string) bool {
 
 // VisibleTo is reused for message reads, read-state changes, and attachment access.
 func (m Summary) VisibleTo(address string) bool {
+	if m.MailboxOwner != "" {
+		return strings.EqualFold(m.MailboxOwner, address)
+	}
 	return strings.EqualFold(m.From.Address, address) || m.ReceivedBy(address)
 }
 
@@ -226,4 +234,12 @@ func (c *Client) Send(ctx context.Context, from Address, to []string, subject, t
 		return "", errors.New("capture response omitted message ID")
 	}
 	return result.ID, nil
+}
+
+// SentBy uses engine folder membership for real mail, avoiding forged From headers.
+func (m Summary) SentBy(address string) bool {
+	if m.MailboxOwner != "" {
+		return strings.EqualFold(m.MailboxOwner, address) && m.InSent
+	}
+	return strings.EqualFold(m.From.Address, address)
 }

@@ -76,7 +76,7 @@ func New(svc *service.Service) http.Handler {
 }
 
 // security establishes a same-origin API contract and browser security headers.
-// TLS termination belongs to Caddy; cookie security uses APP_ORIGIN, not spoofable headers.
+// TLS termination belongs to the reverse proxy; cookie security uses APP_ORIGIN, not spoofable headers.
 func (s *Server) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

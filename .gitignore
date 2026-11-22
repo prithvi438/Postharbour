@@ -13,3 +13,6 @@ backups/
 *.dump
 __pycache__/
 .local-demo/
+
+# Private deployment credentials exported for the server owner.
+.deployment/

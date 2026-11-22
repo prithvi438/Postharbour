@@ -113,6 +113,16 @@ func (s *Service) CreateTenant(ctx context.Context, u model.User, in TenantInput
 	}
 	t = model.Tenant{ID: store.ID(), Name: in.Name, MaxMailboxes: in.MaxMailboxes, QuotaMB: in.QuotaMB, Status: "pending"}
 	err = s.DB.Locked(ctx, func(tx pgx.Tx) error {
+		// The lock makes concurrent first-business requests safe in Community mode.
+		if s.Config.Mode == "stalwart" && s.Config.StalwartEdition == "community" {
+			var exists bool
+			if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tenants)`).Scan(&exists); e != nil {
+				return e
+			}
+			if exists {
+				return problem(409, "Community mode supports one business. Native multi-business hosting requires Enterprise.")
+			}
+		}
 		if _, e := tx.Exec(ctx, `INSERT INTO tenants(id,name,max_mailboxes,quota_mb) VALUES($1,$2,$3,$4)`, t.ID, t.Name, t.MaxMailboxes, t.QuotaMB); e != nil {
 			return e
 		}
@@ -449,6 +459,9 @@ func (s *Service) ResetMailboxPassword(ctx context.Context, u model.User, tenant
 // saveSimulationPassword enables local mailbox sign-in with only a bcrypt hash.
 // Credential changes revoke all mailbox sessions; production uses Stalwart only.
 func (s *Service) saveSimulationPassword(ctx context.Context, tx pgx.Tx, id, hash string) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM webmail_sessions WHERE mailbox_id=$1`, id); err != nil {
+		return err
+	}
 	if s.Config.Mode != "simulation" {
 		return nil
 	}
@@ -510,6 +523,22 @@ func (s *Service) Bootstrap(ctx context.Context) error {
 		}
 		if mode != s.Config.Mode {
 			return fmt.Errorf("database provider is %s; use a separate database for %s", mode, s.Config.Mode)
+		}
+		if s.Config.Mode == "stalwart" {
+			edition := s.Config.StalwartEdition
+			if edition == "" {
+				edition = "enterprise"
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO app_metadata(key,value) VALUES('stalwart_edition',$1) ON CONFLICT DO NOTHING`, edition); err != nil {
+				return err
+			}
+			var saved string
+			if err := tx.QueryRow(ctx, `SELECT value FROM app_metadata WHERE key='stalwart_edition'`).Scan(&saved); err != nil {
+				return err
+			}
+			if saved != edition {
+				return errors.New("changing Stalwart edition requires an explicit data migration")
+			}
 		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE role='platform_admin')`).Scan(&exists); err != nil {
