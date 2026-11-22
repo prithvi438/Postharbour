@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT=/var/www/postharbor
 REPO="$ROOT/repository"
-export PATH=/opt/postharbor/go/bin:/opt/node-v24.22.3-linux-x64/bin:/usr/bin:/bin
+export PATH=/opt/postharbor/go/bin:/opt/node-v24.22.3-linux-x64/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export GOTOOLCHAIN=local
 if [[ $(id -u) != 0 ]]; then echo 'Run this deployment command as root.' >&2; exit 1; fi
 # The runtime service has a read-only filesystem despite sharing the build user.
