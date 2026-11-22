@@ -1,0 +1,21 @@
+{
+  "id": "/mail",
+  "name": "Postharbor Mail",
+  "short_name": "Mail",
+  "description": "A calmer home for your conversations.",
+  "start_url": "/mail",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf5f3",
+  "theme_color": "#edf5f3",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

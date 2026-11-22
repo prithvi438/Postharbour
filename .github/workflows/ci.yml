@@ -1,0 +1,44 @@
+name: Test and build
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postharbor
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: postharbor_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postharbor -d postharbor_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Go format, analysis, and database tests
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://postharbor:test-password@localhost:5432/postharbor_test?sslmode=disable
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+          go build ./cmd/server
+      - name: React tests and production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build

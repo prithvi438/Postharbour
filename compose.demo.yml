@@ -1,0 +1,6 @@
+# Optional local webmail transport. Never include this override in production.
+# The normal stack leaves MAILPIT_URL empty, so its mock webmail API is disabled.
+services:
+  app:
+    environment:
+      MAILPIT_URL: http://mailpit:8025

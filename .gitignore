@@ -1,0 +1,15 @@
+# Local secrets and generated files must never enter the public repository.
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+bin/
+*.log
+.DS_Store
+backups/
+*.dump
+__pycache__/
+.local-demo/

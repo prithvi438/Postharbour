@@ -1,0 +1,70 @@
+# Development and small single-server deployment. Database/API ports are loopback-only.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postharbor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-postharbor}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  app:
+    build: .
+    environment:
+      # Use a URL-safe database password (e.g. openssl rand -hex 32).
+      DATABASE_URL: postgres://${POSTGRES_USER:-postharbor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postharbor}?sslmode=disable
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:?Set BOOTSTRAP_EMAIL}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-simulation}
+      MAX_MAILBOXES: ${MAX_MAILBOXES:-5}
+      MAIL_HOST: ${MAIL_HOST:-mail.example.com}
+      WEBMAIL_URL: ${WEBMAIL_URL:-}
+      MAILPIT_URL: ${MAILPIT_URL:-}
+      STALWART_URL: ${STALWART_URL:-}
+      STALWART_TOKEN: ${STALWART_TOKEN:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=32m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 384m
+    logging: *logging
+  # Optional local email catcher. `--profile demo` enables it; normal deployment
+  # does not. It stores test messages, with no relay or forwarding configured.
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    profiles: ["demo"]
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 200
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_LABEL: Postharbor local demo
+      MP_ALLOWED_HOSTS: localhost,127.0.0.1,mailpit
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    volumes:
+      - mailpit_data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+volumes:
+  postgres_data:
+  mailpit_data:

@@ -1,0 +1,6 @@
+# Caddy obtains and renews the dashboard TLS certificate automatically.
+# A/AAAA for APP_DOMAIN must point to this VPS, with ports 80 and 443 reachable.
+{$APP_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy app:8080
+}
