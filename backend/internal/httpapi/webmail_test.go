@@ -290,7 +290,8 @@ func TestWebmailIsolationAndCompose(t *testing.T) {
 	want(t, alex.request("GET", "/api/webmail/session", nil), 401)
 	cfg.Mode = "stalwart"
 	live := client{handler: httpapi.New(&service.Service{DB: db, Config: cfg})}
-	want(t, live.request("POST", "/api/webmail/login", map[string]string{"email": "hello@studio.test", "password": "mailbox-password"}), 404)
+	// Live webmail now exists, but stays unavailable until its encryption key is configured.
+	want(t, live.request("POST", "/api/webmail/login", map[string]string{"email": "hello@studio.test", "password": "mailbox-password"}), 503)
 }
 
 // TestWebmailDisabledByDefault proves the normal admin server does not implicitly expose captures.

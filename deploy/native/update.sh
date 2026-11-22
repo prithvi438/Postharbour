@@ -20,6 +20,9 @@ runuser -u postharbor -- env PATH="$PATH" GOTOOLCHAIN=local bash -c '
     npm test
     npm run build
     cd ../backend
+    # Integration tests create/drop isolated schemas using the service account
+    # local peer-authenticated database connection, never application tables.
+    export TEST_DATABASE_URL="postgres://postharbor@/postharbor?host=/var/run/postgresql"
     go test ./...
     CGO_ENABLED=0 go build -trimpath -o ../server ./cmd/server
 ' bash "$RELEASE"

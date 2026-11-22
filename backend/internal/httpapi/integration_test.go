@@ -269,3 +269,39 @@ func TestOriginAndJSONRejects(t *testing.T) {
 	c := client{handler: h}
 	want(t, c.request("POST", "/api/login", map[string]string{"email": "nobody@example.com", "password": "test-password", "role": "platform_admin"}), 400)
 }
+
+// TestCommunityBusinessLimit serializes competing creation requests even when
+// neither request has observed an existing business before entering the service.
+func TestCommunityBusinessLimit(t *testing.T) {
+	_, db := setup(t)
+	svc := &service.Service{DB: db, Mail: mail.Simulation{}, Config: config.Config{Mode: "stalwart", StalwartEdition: "community", MaxMailboxes: 5}}
+	owner := model.User{Role: "platform_admin", Email: "owner@example.test"}
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, err := svc.CreateTenant(context.Background(), owner, service.TenantInput{Name: fmt.Sprintf("Business %d", index), AdminName: "Admin", AdminEmail: fmt.Sprintf("admin%d@example.test", index), Password: "test-community-password", MaxMailboxes: 5, QuotaMB: 5120})
+			results <- err
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+	successes, conflicts := 0, 0
+	for err := range results {
+		if err == nil {
+			successes++
+			continue
+		}
+		var problem *service.Error
+		if errors.As(err, &problem) && problem.Status == 409 {
+			conflicts++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("want one business and one conflict, got %d/%d", successes, conflicts)
+	}
+}

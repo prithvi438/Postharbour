@@ -48,7 +48,7 @@ bash /var/www/postharbor/repository/deploy/native/update.sh
 ```
 
 The command fetches Git, builds a new release as the dedicated service user, runs
-frontend/backend tests, activates the release, restarts only Postharbor, and checks
+frontend/backend tests (including PostgreSQL integration tests in isolated schemas), activates the release, restarts only Postharbor, and checks
 its health. If health fails it restores the previous binary release. Database
 migrations are not rolled back: review migration compatibility before downgrading.
 Pass an already fetched commit hash to deploy a specific version. No billing or
@@ -104,3 +104,18 @@ mail queue, failed logins, certificate renewal and delivery failures.
 
 See the official [Stalwart native installation guide](https://stalw.art/docs/install/platform/linux/)
 and [tenant licensing documentation](https://stalw.art/docs/auth/authorization/tenants/).
+
+## Renew the SMTP/IMAP certificate
+
+Certbot renews the Nginx certificate automatically. Install the included deploy hook
+so the same renewed certificate reaches Stalwart's SMTP/IMAP listeners:
+
+```sh
+install -m 700 /var/www/postharbor/repository/deploy/native/renew-mail-certificate.py \
+  /etc/letsencrypt/renewal-hooks/deploy/postharbor-mail
+```
+
+The hook reads the private app environment and `engine_certificate_id` from
+`/root/postharbor-access.json`, updates that existing certificate through the
+loopback management API, and restarts Stalwart. Active mail-client connections
+will reconnect during that restart. It ignores renewals for other domains.
