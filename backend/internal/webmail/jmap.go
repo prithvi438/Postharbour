@@ -64,7 +64,20 @@ func (c *JMAP) request(ctx context.Context, method, target, contentType string, 
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	res, err := c.http.Do(req)
+	client := c.http
+	// RFC discovery commonly redirects to /jmap/session. Follow one GET only
+	// on the pinned origin; uploads, downloads and API calls still refuse redirects.
+	if method == "GET" && target == c.Base+"/.well-known/jmap" {
+		discovery := *c.http
+		discovery.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+			if len(via) > 1 || next.Method != "GET" || next.URL.Scheme != base.Scheme || next.URL.Host != base.Host || next.URL.User != nil {
+				return errors.New("unsafe discovery redirect")
+			}
+			return nil
+		}
+		client = &discovery
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, errors.New("mail server unavailable")
 	}
