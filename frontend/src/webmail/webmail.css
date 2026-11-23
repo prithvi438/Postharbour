@@ -2078,19 +2078,88 @@
   }
 }
 
-/* People keep the message list compact; subjects scroll independently in the reader. */
-.wm-person-address {
+/* Three-line person rows use their own spacing, leaving message-folder rows intact.
+   min-width: 0 and block previews ensure long addresses/subjects truncate cleanly. */
+.wm-message-row.wm-person-row {
+  align-items: flex-start;
+  padding: 14px 18px;
+  gap: 12px;
+  min-height: 94px;
+}
+.wm-person-row .wm-row-avatar {
+  width: 38px;
+  height: 38px;
+  margin-top: 2px;
+  border-radius: 13px;
+}
+.wm-person-row .wm-row-content {
+  gap: 4px;
+}
+.wm-person-row .wm-row-heading {
+  min-width: 0;
+  line-height: 20px;
+}
+.wm-person-row .wm-row-heading strong {
+  min-width: 0;
+  font-weight: 600;
+}
+.wm-person-row .wm-row-heading time {
+  font-size: 11px;
+}
+.wm-person-subject-line,
+.wm-person-preview-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wm-person-row .wm-row-subject {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
+  line-height: 18px;
+}
+.wm-person-topics {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+.wm-person-row .wm-row-preview {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
 }
 .wm-person-unread {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
   background: var(--accent);
   color: var(--solid);
-  border-radius: 20px;
-  padding: 3px 7px;
-  font-size: 12px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.wm-person-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+@media (max-width: 760px) {
+  .wm-message-row.wm-person-row {
+    padding: 13px 16px;
+    min-height: 92px;
+    gap: 10px;
+  }
 }
 .wm-subject-tabs,
 .wm-template-tabs {

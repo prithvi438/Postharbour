@@ -887,50 +887,66 @@ export function Webmail() {
                       </button>
                     </div>
                   ) : view === 'conversations' ? (
-                    personCards.map((person) => (
-                      <button
-                        key={person.address}
-                        className={`wm-message-row ${peer === person.address ? 'selected' : ''} ${person.unread ? 'unread' : ''}`}
-                        aria-pressed={peer === person.address}
-                        onClick={() =>
-                          openMessage(person.latest.id, person.address, person.latest.subject)
-                        }
-                      >
-                        <span className="wm-row-avatar">{initials(person.name)}</span>
-                        <span className="wm-row-content">
-                          <span className="wm-row-heading">
-                            <strong>
-                              {organizer.contacts.find(
-                                (c) => c.email.toLowerCase() === person.address,
-                              )?.name || person.name}
-                            </strong>
-                            <time dateTime={person.latest.date}>
-                              {messageDate(person.latest.date)}
-                            </time>
+                    personCards.map((person) => {
+                      const name =
+                        organizer.contacts.find(
+                          (contact) => contact.email.toLowerCase() === person.address,
+                        )?.name || person.name;
+                      const topicCount = subjects(person.messages).length;
+                      // Three short lines keep person cards scannable. The full address
+                      // remains available to assistive technology and on hover.
+                      return (
+                        <button
+                          key={person.address}
+                          className={`wm-message-row wm-person-row ${peer === person.address ? 'selected' : ''} ${person.unread ? 'unread' : ''}`}
+                          aria-pressed={peer === person.address}
+                          title={person.address}
+                          onClick={() =>
+                            openMessage(person.latest.id, person.address, person.latest.subject)
+                          }
+                        >
+                          <span className="wm-row-avatar" aria-hidden="true">
+                            {initials(name)}
                           </span>
-                          <span className="wm-person-address">{person.address}</span>
-                          <span className="wm-row-subject">
-                            {person.latest.subject || '(No subject)'}
+                          <span className="wm-row-content">
+                            <span className="wm-row-heading">
+                              <strong>{name}</strong>
+                              <time dateTime={person.latest.date}>
+                                {messageDate(person.latest.date)}
+                              </time>
+                            </span>
+                            {name !== person.address && (
+                              <span className="wm-sr-only">{person.address}</span>
+                            )}
+                            <span className="wm-person-subject-line">
+                              <span className="wm-row-subject">
+                                {person.latest.subject || '(No subject)'}
+                              </span>
+                              {topicCount > 1 && (
+                                <span className="wm-person-topics">{topicCount} subjects</span>
+                              )}
+                            </span>
+                            <span className="wm-person-preview-line">
+                              <span className="wm-row-preview">
+                                {person.latest.from.address.toLowerCase() ===
+                                session.user.address.toLowerCase()
+                                  ? 'You: '
+                                  : ''}
+                                {person.latest.snippet || 'Open this conversation'}
+                              </span>
+                              {person.unread > 0 && (
+                                <span
+                                  className="wm-person-unread"
+                                  aria-label={`${person.unread} unread`}
+                                >
+                                  {person.unread > 99 ? '99+' : person.unread}
+                                </span>
+                              )}
+                            </span>
                           </span>
-                          <span className="wm-row-preview">
-                            {person.latest.from.address.toLowerCase() ===
-                            session.user.address.toLowerCase()
-                              ? 'You: '
-                              : ''}
-                            {person.latest.snippet || 'Open this conversation'}
-                          </span>
-                          <small>
-                            {subjects(person.messages).length} subjects · {person.messages.length}{' '}
-                            emails
-                          </small>
-                        </span>
-                        {person.unread > 0 && (
-                          <span className="wm-person-unread" aria-label={`${person.unread} unread`}>
-                            {person.unread}
-                          </span>
-                        )}
-                      </button>
-                    ))
+                        </button>
+                      );
+                    })
                   ) : (
                     visible.map((item) => (
                       <button
