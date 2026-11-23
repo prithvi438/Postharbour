@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mailAPI } from './api';
 import { emptySettings } from './settings';
@@ -485,4 +485,46 @@ it('guards unsaved mailbox settings on navigation', async () => {
   expect(await screen.findByText('Discard your unsaved settings?')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Keep writing' }));
   expect(screen.getByLabelText('Add my signature automatically')).toBeChecked();
+});
+
+it('expands the tapped older email and restores its card without losing a reply', async () => {
+  const older: MailDetail = {
+    ...detail,
+    id: 'older',
+    text: 'An older email body',
+    date: '2026-11-21T09:00:00Z',
+  };
+  mockMailbox((path) => {
+    if (path === '/messages?folder=inbox') return Promise.resolve({ messages: [message, older] });
+    if (path.startsWith('/people?')) return Promise.resolve({ messages: [older, detail] });
+  });
+  render(<Webmail />);
+  fireEvent.click(await screen.findByRole('button', { name: /Studio team.*A little hello/ }));
+  const olderBody = await screen.findByText('An older email body');
+  const olderCard = olderBody.closest('article')!;
+  fireEvent.click(within(olderCard).getByText('Email details'));
+  expect(document.querySelector('.wm-app')).not.toHaveClass('wm-expanded');
+  fireEvent.click(olderBody);
+  expect(document.querySelector('.wm-app')).toHaveClass('wm-expanded');
+  expect(screen.queryByText('Private message body')).not.toBeInTheDocument();
+  expect(screen.getByText('An older email body')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+  fireEvent.input(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { textContent: 'Reply to the older email' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Back to conversation' }));
+  expect(document.querySelector('.wm-app')).not.toHaveClass('wm-expanded');
+  expect(screen.getByText('Private message body')).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Message' })).toHaveTextContent(
+    'Reply to the older email',
+  );
+  expect(document.activeElement).toBe(screen.getByText('An older email body').closest('article'));
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(mailAPI).toHaveBeenCalledWith(
+      '/send',
+      'POST',
+      expect.objectContaining({ reply_to: 'older', text: 'Reply to the older email' }),
+    ),
+  );
 });

@@ -2292,3 +2292,35 @@
     max-width: 210px;
   }
 }
+
+/* Email cards open the full reader; nested links, details and actions retain their
+   normal behavior. A dedicated button makes the same action keyboard-accessible. */
+.wm-chat-expandable {
+  cursor: pointer;
+}
+.wm-chat-expandable:hover {
+  border-color: var(--accent);
+}
+.wm-chat-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.wm-chat-card > header .wm-card-expand {
+  order: 2;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input);
+  color: var(--accent);
+}
+.wm-chat-card > header time {
+  order: 1;
+}
+@media (max-width: 760px) {
+  .wm-chat-card > header .wm-card-expand {
+    order: 0;
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Download, Mail, MessageCircle, Paperclip } from 'lucide-react';
+import { Download, Mail, Maximize2, MessageCircle, Paperclip } from 'lucide-react';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { cleanHTML } from './RichEditor';
 import { initials, isPhoto, messageDate } from './presentation';
@@ -39,8 +39,8 @@ function Attachments({ message }: { message: MailDetail }) {
   );
 }
 
-/** The conversation contains real emails connected by reply headers, not arbitrary
- * messages with the same subject. Bodies use sanitized formatting. */
+/** Render authorized emails from a thread or person/topic view. Card expansion
+ * reuses the loaded message and keeps nested controls and text selection independent. */
 export function Conversation({
   messages,
   address,
@@ -49,6 +49,8 @@ export function Conversation({
   onReply,
   onForward,
   composing,
+  onExpand,
+  focusMessageId,
 }: {
   messages: MailDetail[];
   address: string;
@@ -57,14 +59,24 @@ export function Conversation({
   onReply: (message: MailDetail) => void;
   onForward?: (message: MailDetail) => void;
   composing: boolean;
+  onExpand?: (message: MailDetail) => void;
+  focusMessageId?: string;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const previousCount = useRef(0);
+  const cards = useRef(new Map<string, HTMLElement>());
   useEffect(() => {
     if (messages.length > previousCount.current && !composing)
       end.current?.scrollIntoView?.({ block: 'nearest' });
     previousCount.current = messages.length;
   }, [messages.length, composing]);
+  // Returning from full screen restores the exact card, including older messages.
+  useEffect(() => {
+    if (!focusMessageId) return;
+    const card = cards.current.get(focusMessageId);
+    card?.focus({ preventScroll: true });
+    card?.scrollIntoView?.({ block: 'nearest' });
+  }, [focusMessageId]);
   return (
     <div className="wm-conversation" aria-label="Email conversation">
       <div className="wm-conversation-intro">
@@ -79,7 +91,25 @@ export function Conversation({
         return (
           <article
             key={message.id}
-            className={`wm-chat-card ${mine ? 'wm-chat-mine' : ''}`}
+            className={`wm-chat-card ${mine ? 'wm-chat-mine' : ''} ${onExpand && !composing ? 'wm-chat-expandable' : ''}`}
+            tabIndex={-1}
+            ref={(element) => {
+              if (element) cards.current.set(message.id, element);
+              else cards.current.delete(message.id);
+            }}
+            onClick={(event) => {
+              if (!onExpand || composing || event.defaultPrevented) return;
+              const target = event.target;
+              if (
+                target instanceof Element &&
+                target.closest(
+                  'a, button, input, select, textarea, details, [contenteditable], [role="button"]',
+                )
+              )
+                return;
+              if (window.getSelection()?.toString()) return;
+              onExpand(message);
+            }}
             aria-label={`Email from ${message.from.address}`}
           >
             <header>
@@ -94,6 +124,17 @@ export function Conversation({
                 <strong>{mine ? 'You' : message.from.name || message.from.address}</strong>
                 <span>{message.from.address}</span>
               </div>
+              {onExpand && (
+                <button
+                  className="icon-button wm-card-expand"
+                  disabled={composing}
+                  aria-label={`Expand email: ${message.subject || '(No subject)'} from ${message.from.address}`}
+                  title="Open this email full screen"
+                  onClick={() => onExpand(message)}
+                >
+                  <Maximize2 size={17} />
+                </button>
+              )}
               <time dateTime={message.date}>{messageDate(message.date, true)}</time>
             </header>
             <details className="wm-email-details">

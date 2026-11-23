@@ -130,6 +130,11 @@ chips narrow the person cards using matching messages. Topics are a presentation
 view; sending a reply still preserves the real email's Message-ID/reference headers.
 The live 200-message window and 50-message topic limit still apply.
 
+Tap an email card’s body or its expand icon to open that particular email full screen.
+**Back to conversation** or **Collapse email** returns to the same card and preserves
+a reply draft. Email details, attachment links, Reply/Forward, and text selection
+keep their normal actions. Card expansion is disabled while composing.
+
 In **Mail → Settings**, upload your mailbox photo, enable a default rich signature,
 and create/edit/delete up to 30 templates. Click **Save settings** to persist changes.
 Compose and Reply offer **Insert template**. Inserting a template appends its body

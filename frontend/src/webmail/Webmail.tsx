@@ -59,6 +59,15 @@ export function Webmail() {
   const peerRef = useRef('');
   const topicRef = useRef('');
   const [expanded, setExpanded] = useState(false);
+  const [returnToCard, setReturnToCard] = useState('');
+  const expandToggle = useRef<HTMLButtonElement>(null);
+  const readerScroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (expanded) {
+      expandToggle.current?.focus({ preventScroll: true });
+      if (readerScroll.current) readerScroll.current.scrollTop = 0;
+    }
+  }, [expanded]);
   const [composeID, setComposeID] = useState(0);
   const [folder, setFolder] = useState<Folder>('inbox');
   const [mail, setMail] = useState<Record<Folder, MailSummary[]>>({ inbox: [], sent: [] });
@@ -114,6 +123,7 @@ export function Webmail() {
     setMailToken('');
     setSession(null);
     setExpanded(false);
+    setReturnToCard('');
     setMail({ inbox: [], sent: [] });
     setSelected('');
     setThread([]);
@@ -181,6 +191,7 @@ export function Webmail() {
     setPeer('');
     peerRef.current = '';
     setExpanded(false);
+    setReturnToCard('');
     paneRef.current = false;
     selectedRef.current = '';
     detailRequest.current++;
@@ -350,12 +361,28 @@ export function Webmail() {
       peerRef.current = person;
       topicRef.current = subjectKey(subject);
       setPeer(person);
+      setReturnToCard('');
       setDraft(null);
       selectedRef.current = id;
       setSelected(id);
       setDetailError('');
       void loadConversation(id);
     });
+  }
+  /** Expand the tapped email, not merely the conversation's newest message.
+   * Invalidate a pending refresh before moving the selection to this loaded card. */
+  function expandEmail(message: MailDetail) {
+    if (draft || busyRef.current) return;
+    detailRequest.current++;
+    selectedRef.current = message.id;
+    setSelected(message.id);
+    setReturnToCard('');
+    setExpanded(true);
+  }
+  /** Changing the reader size does not discard a reply or its attachments. */
+  function collapseEmail() {
+    setExpanded(false);
+    setReturnToCard(selected);
   }
   function compose(to = '') {
     guard(() => {
@@ -510,7 +537,11 @@ export function Webmail() {
     ? thread.find((message) => message.id === selected)
     : thread[thread.length - 1];
   const title =
-    draft && !draft.reply_to ? 'New conversation' : peer || thread[0]?.subject || 'Conversation';
+    draft && !draft.reply_to
+      ? 'New conversation'
+      : expanded
+        ? latest?.subject || '(No subject)'
+        : peer || thread[0]?.subject || 'Conversation';
 
   return (
     <div
@@ -1020,8 +1051,8 @@ export function Webmail() {
                     <header className="wm-chat-header">
                       <button
                         className="icon-button"
-                        aria-label="Back to messages"
-                        onClick={() => guard(closePane)}
+                        aria-label={expanded ? 'Back to conversation' : 'Back to messages'}
+                        onClick={() => (expanded ? collapseEmail() : guard(closePane))}
                       >
                         <ArrowLeft size={20} />
                       </button>
@@ -1055,9 +1086,10 @@ export function Webmail() {
                           </button>
                           <button
                             className="icon-button"
+                            ref={expandToggle}
                             aria-label={expanded ? 'Collapse email' : 'Expand email'}
                             title={expanded ? 'Collapse email' : 'Expand email'}
-                            onClick={() => setExpanded(!expanded)}
+                            onClick={() => (expanded ? collapseEmail() : setExpanded(true))}
                           >
                             {expanded ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                           </button>
@@ -1082,7 +1114,7 @@ export function Webmail() {
                         ))}
                       </nav>
                     )}
-                    <div className="wm-pane-scroll">
+                    <div className="wm-pane-scroll" ref={readerScroll}>
                       {detailLoading ? (
                         <div className="wm-reader-status" role="status">
                           <LoaderCircle className="spin" size={24} />
@@ -1110,9 +1142,11 @@ export function Webmail() {
                               }
                               address={session.user.address}
                               avatar={settings.avatar}
-                              truncated={truncated}
+                              truncated={!expanded && truncated}
                               onReply={reply}
                               onForward={forward}
+                              onExpand={expanded ? undefined : expandEmail}
+                              focusMessageId={expanded ? '' : returnToCard}
                               composing={Boolean(draft)}
                             />
                           )}
