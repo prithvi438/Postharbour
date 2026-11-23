@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { PhotoPicker } from '../components/ProfilePhoto';
 import {
   Activity,
   ArrowUpRight,
@@ -31,6 +33,7 @@ interface Props {
   open: (action: ActionDialog) => void;
   navigate: (page: Page) => void;
   onPasswordChanged: () => void;
+  onProfileChanged: (avatar: string) => void;
 }
 
 /** Workspace renders a focused page using already tenant-scoped API results. */
@@ -40,7 +43,13 @@ export function Workspace(props: Props) {
   const readyDomains = domains.filter((d) => d.status === 'active');
   const allocated = mailboxes.reduce((total, box) => total + box.quota_mb, 0);
   if (page === 'settings')
-    return <Settings session={session} onPasswordChanged={props.onPasswordChanged} />;
+    return (
+      <Settings
+        session={session}
+        onPasswordChanged={props.onPasswordChanged}
+        onProfileChanged={props.onProfileChanged}
+      />
+    );
   if (page === 'overview')
     return (
       <>
@@ -462,12 +471,15 @@ function ActivityList({ events }: { events: AuditEvent[] }) {
 function Settings({
   session,
   onPasswordChanged,
+  onProfileChanged,
 }: {
   session: Session;
   onPasswordChanged: () => void;
+  onProfileChanged: (avatar: string) => void;
 }) {
   return (
     <div className="settings-grid">
+      <AdminPhoto session={session} onSaved={onProfileChanged} />
       <section className="glass panel">
         <span className="eyebrow">ACCOUNT SECURITY</span>
         <h3>Change your password</h3>
@@ -540,5 +552,43 @@ function Settings({
         )}
       </section>
     </div>
+  );
+}
+
+/** The dashboard photo belongs to this administrator, independently of mailboxes. */
+function AdminPhoto({ session, onSaved }: { session: Session; onSaved: (avatar: string) => void }) {
+  const [avatar, setAvatar] = useState(session.user.avatar || '');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  async function save() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api<{ avatar: string }>('/account/profile', 'PUT', { avatar });
+      setAvatar(result.avatar);
+      onSaved(result.avatar);
+      setMessage('Profile photo saved.');
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="glass panel">
+      <span className="eyebrow">YOUR PROFILE</span>
+      <h3>Administrator photo</h3>
+      <PhotoPicker
+        value={avatar}
+        name={session.user.name}
+        disabled={busy}
+        onChange={setAvatar}
+        onBusyChange={setBusy}
+      />
+      <button className="button primary" disabled={busy} onClick={() => void save()}>
+        Save profile photo
+      </button>
+      {message && <p role="status">{message}</p>}
+    </section>
   );
 }

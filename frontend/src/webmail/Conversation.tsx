@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Download, Mail, MessageCircle, Paperclip } from 'lucide-react';
+import { ProfilePhoto } from '../components/ProfilePhoto';
 import { cleanHTML } from './RichEditor';
 import { initials, isPhoto, messageDate } from './presentation';
 import type { MailDetail } from './types';
@@ -43,6 +44,7 @@ function Attachments({ message }: { message: MailDetail }) {
 export function Conversation({
   messages,
   address,
+  avatar,
   truncated,
   onReply,
   onForward,
@@ -50,6 +52,7 @@ export function Conversation({
 }: {
   messages: MailDetail[];
   address: string;
+  avatar?: string;
   truncated: boolean;
   onReply: (message: MailDetail) => void;
   onForward?: (message: MailDetail) => void;
@@ -81,7 +84,11 @@ export function Conversation({
           >
             <header>
               <span className="wm-row-avatar">
-                {initials(message.from.name || message.from.address)}
+                {mine && avatar ? (
+                  <ProfilePhoto value={avatar} name="Your" />
+                ) : (
+                  initials(message.from.name || message.from.address)
+                )}
               </span>
               <div>
                 <strong>{mine ? 'You' : message.from.name || message.from.address}</strong>

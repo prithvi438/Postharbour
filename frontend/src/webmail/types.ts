@@ -27,6 +27,7 @@ export interface MailDetail extends MailSummary {
 }
 export type Folder = 'inbox' | 'sent';
 export interface Draft {
+  include_signature?: boolean;
   to: string;
   subject: string;
   text: string;

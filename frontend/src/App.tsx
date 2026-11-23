@@ -23,6 +23,7 @@ import { useTheme } from './hooks/useTheme';
 import { Brand, Empty, Modal } from './components/ui';
 import { ResourceDialogs, type ActionDialog } from './components/ResourceDialogs';
 import { Login } from './pages/Login';
+import { ProfilePhoto } from './components/ProfilePhoto';
 import { Workspace } from './pages/Workspace';
 
 const navigation: { id: Page; label: string; icon: typeof Mail }[] = [
@@ -328,7 +329,9 @@ export function App() {
             </p>
           </div>
           <div className="profile">
-            <span className="avatar">{session.user.name.slice(0, 2).toUpperCase()}</span>
+            <span className="avatar">
+              <ProfilePhoto value={session.user.avatar} name={session.user.name} />
+            </span>
             <div>
               <strong>{session.user.name}</strong>
               <small>
@@ -463,6 +466,13 @@ export function App() {
               mailboxes={mailboxes}
               events={events}
               session={session}
+              onProfileChanged={(avatar) =>
+                setSession((current) =>
+                  current?.user.id === session.user.id
+                    ? { ...current, user: { ...current.user, avatar } }
+                    : current,
+                )
+              }
               search={search}
               setSearch={setSearch}
               open={setAction}

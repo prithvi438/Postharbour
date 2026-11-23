@@ -1,5 +1,6 @@
 /** Shared API response types. Keep these aligned with backend/internal/model. */
 export interface User {
+  avatar?: string;
   id: string;
   email: string;
   name: string;

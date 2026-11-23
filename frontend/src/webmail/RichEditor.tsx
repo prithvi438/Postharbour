@@ -284,6 +284,7 @@ export function RichEditor({
   );
   return (
     <div className="wm-editor">
+      {!toolsTarget && controls}
       {toolsTarget && createPortal(controls, toolsTarget)}
       <div
         ref={ref}

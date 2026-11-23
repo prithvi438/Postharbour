@@ -266,3 +266,36 @@ Contacts: `{id, name, email}` (up to 500). Groups: `{id, name, members: [contact
 map of capture IDs to `{starred, archived}` (up to 1,000). Flags never authorize
 message access or change Mailpit's global state. Deleting a mailbox cascades its
 organizer. Empty collections are returned as arrays/objects, not null.
+
+### People, mailbox settings and profile photos
+
+All `/api/webmail/*` routes require the **mailbox session**, not an administrator
+session. Writes require the mailbox CSRF token and same-origin JSON requests.
+
+- `GET /api/webmail/people?peer=person%40example.com&subject=project`: returns
+  `{messages, truncated}` for that exact correspondent and normalized subject.
+  Authorization is checked before grouping. Repeated `Re:` prefixes and case are
+  ignored; `Fwd:` remains a separate subject. Up to 50 newest matching emails are
+  returned chronologically from the adapter's loaded mailbox window (200 in live mode).
+  The original `/messages/{id}/conversation` still uses email reply/thread metadata.
+- `GET /api/webmail/settings`: returns `{revision, avatar, signature,
+  signature_enabled, templates}`. An unconfigured mailbox starts at revision 0.
+- `PUT /api/webmail/settings`: replaces that same document using its current
+  revision. A stale revision returns 409. Each template has `{id, name, subject, html}`.
+  Maximum 30 templates; names 120 bytes; subjects 200 bytes; HTML 50 KB each;
+  signature HTML 10 KB. The total JSON request must fit in 2 MiB. HTML is sanitized
+  on the server. Account deletion cascades to these preferences.
+- `POST /api/webmail/send` additionally accepts `include_signature` (optional
+  boolean, default true). If enabled in settings, the server adds the saved footer
+  exactly once to the submitted body, in both plain-text and HTML alternatives.
+  The client previews it separately. This applies to Postharbor sends; external
+  SMTP clients must configure their own signature. Existing message/attachment
+  limits still apply before the footer is added.
+- `PUT /api/account/profile` accepts `{avatar}` using the **administrator session**
+  and its CSRF token. It edits only that administrator's profile. `/api/session`
+  includes `user.avatar`. Dashboard and mailbox identities are independent.
+
+Avatar values are empty (remove) or PNG/JPEG base64 data URLs, at most 256 KiB
+when decoded, with dimensions at most 512×512. The browser prepares a 256×256
+square; the backend verifies and re-encodes the image without its original metadata.
+Photos are private Postharbor UI preferences, not public avatar/BIMI records.

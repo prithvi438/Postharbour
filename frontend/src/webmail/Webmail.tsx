@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Settings2,
   Star,
   Archive,
   Maximize2,
@@ -22,6 +23,10 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import { ProfilePhoto } from '../components/ProfilePhoto';
+import { MailSettings } from './MailSettings';
+import { emptySettings, type MailSettings as Settings } from './settings';
+import { people, subjects, subjectKey } from './people';
 import { Brand, Modal } from '../components/ui';
 import { useTheme } from '../hooks/useTheme';
 import { useInstall } from '../hooks/useInstall';
@@ -44,9 +49,15 @@ export function Webmail() {
   const [organizer, setOrganizer] = useState<Organizer>(emptyOrganizer);
   const [organizerReady, setOrganizerReady] = useState(false);
   const [organizerBusy, setOrganizerBusy] = useState(false);
-  const [view, setView] = useState<'conversations' | 'mail' | 'starred' | 'archive' | 'contacts'>(
-    'conversations',
-  );
+  const [view, setView] = useState<
+    'conversations' | 'mail' | 'starred' | 'archive' | 'contacts' | 'settings'
+  >('conversations');
+  const [settings, setSettings] = useState<Settings>(emptySettings);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [peer, setPeer] = useState('');
+  const peerRef = useRef('');
+  const topicRef = useRef('');
   const [expanded, setExpanded] = useState(false);
   const [composeID, setComposeID] = useState(0);
   const [folder, setFolder] = useState<Folder>('inbox');
@@ -80,7 +91,7 @@ export function Webmail() {
   const install = useInstall();
   const paneOpen = Boolean(selected || draft);
   paneRef.current = paneOpen;
-  dirtyRef.current = draftHasContent(draft);
+  dirtyRef.current = draftHasContent(draft) || settingsDirty;
 
   /** Wipe all account-specific data immediately when authentication ends. */
   const clearSession = useCallback(() => {
@@ -91,6 +102,11 @@ export function Webmail() {
     paneRef.current = false;
     dirtyRef.current = false;
     busyRef.current = false;
+    setSettings(emptySettings);
+    setSettingsReady(false);
+    setSettingsDirty(false);
+    setPeer('');
+    peerRef.current = '';
     setOrganizer(emptyOrganizer);
     setOrganizerReady(false);
     setOrganizerBusy(false);
@@ -161,6 +177,9 @@ export function Webmail() {
     paneRef.current = true;
   }
   function closePane() {
+    setSettingsDirty(false);
+    setPeer('');
+    peerRef.current = '';
     setExpanded(false);
     paneRef.current = false;
     selectedRef.current = '';
@@ -242,6 +261,16 @@ export function Webmail() {
     if (!session) return;
     const owner = epoch.current;
     void refresh();
+    void mailAPI<Settings>('/settings')
+      .then((result) => {
+        if (active.current && owner === epoch.current) {
+          setSettings(result);
+          setSettingsReady(true);
+        }
+      })
+      .catch((err) => {
+        if (active.current && owner === epoch.current) setError(err.message);
+      });
     void mailAPI<Organizer>('/organizer')
       .then((result) => {
         if (active.current && owner === epoch.current) {
@@ -268,7 +297,8 @@ export function Webmail() {
     };
   }, [refresh, session]);
 
-  /** Conversation membership comes from the server's real email reply headers. */
+  /** People mode requests an authorized person/topic view; Inbox and Sent retain
+   * the original reply-header thread. Both protect against stale response races. */
   async function loadConversation(id: string, quiet = false) {
     const request = ++detailRequest.current;
     const owner = epoch.current;
@@ -278,7 +308,9 @@ export function Webmail() {
     }
     try {
       const result = await mailAPI<{ messages: MailDetail[]; truncated?: boolean }>(
-        `/messages/${encodeURIComponent(id)}/conversation`,
+        peerRef.current
+          ? `/people?${new URLSearchParams({ peer: peerRef.current, subject: topicRef.current })}`
+          : `/messages/${encodeURIComponent(id)}/conversation`,
       );
       if (
         !active.current ||
@@ -312,9 +344,12 @@ export function Webmail() {
     }
   }
   conversationLoader.current = loadConversation;
-  function openMessage(id: string) {
+  function openMessage(id: string, person = '', subject = '') {
     guard(() => {
       enterPane();
+      peerRef.current = person;
+      topicRef.current = subjectKey(subject);
+      setPeer(person);
       setDraft(null);
       selectedRef.current = id;
       setSelected(id);
@@ -327,6 +362,8 @@ export function Webmail() {
       setComposeID((id) => id + 1);
       enterPane();
       selectedRef.current = '';
+      peerRef.current = '';
+      setPeer('');
       detailRequest.current++;
       setSelected('');
       setThread([]);
@@ -401,6 +438,10 @@ export function Webmail() {
     );
     if (isReply && selectedRef.current) void loadConversation(selectedRef.current, true);
     else if (id) {
+      const recipient = draft?.to.split(',')[0].trim().toLowerCase() || '';
+      peerRef.current = view === 'conversations' ? recipient : '';
+      setPeer(peerRef.current);
+      topicRef.current = subjectKey(draft?.subject || '');
       selectedRef.current = id;
       setSelected(id);
       setFolder('sent');
@@ -458,13 +499,18 @@ export function Webmail() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  const personCards = people(visible, session?.user.address || '');
+  const selectedPerson = people(allMail, session?.user.address || '').find(
+    (p) => p.address === peer,
+  );
+  const topicCards = subjects(selectedPerson?.messages || []);
   const unread = mail.inbox.filter((item) => !item.read).length;
   const owner = epoch.current;
   const latest = expanded
     ? thread.find((message) => message.id === selected)
     : thread[thread.length - 1];
   const title =
-    draft && !draft.reply_to ? 'New conversation' : thread[0]?.subject || 'Conversation';
+    draft && !draft.reply_to ? 'New conversation' : peer || thread[0]?.subject || 'Conversation';
 
   return (
     <div
@@ -589,6 +635,7 @@ export function Webmail() {
                   { key: 'starred', label: 'Starred', icon: Star },
                   { key: 'archive', label: 'Archive', icon: Archive },
                   { key: 'contacts', label: 'Contacts', icon: Users },
+                  { key: 'settings', label: 'Settings', icon: Settings2 },
                 ] as const
               ).map(({ key, label, icon: Icon }) => (
                 <button
@@ -647,7 +694,11 @@ export function Webmail() {
               </a>
               <div className="wm-profile">
                 <span className="wm-avatar">
-                  {initials(session.user.name || session.user.address)}
+                  {settings.avatar ? (
+                    <ProfilePhoto value={settings.avatar} name={session.user.name} />
+                  ) : (
+                    initials(session.user.name || session.user.address)
+                  )}
                 </span>
                 <div>
                   <strong>{session.user.name || session.user.address.split('@')[0]}</strong>
@@ -664,7 +715,46 @@ export function Webmail() {
               </div>
             </div>
           </aside>
-          {view === 'contacts' && !paneOpen ? (
+          {view === 'settings' && !paneOpen ? (
+            settingsReady ? (
+              <MailSettings
+                value={settings}
+                name={session.user.name}
+                onDirty={(value) => {
+                  if (owner === epoch.current) setSettingsDirty(value);
+                }}
+                onBusy={(value) => {
+                  if (owner === epoch.current) busyRef.current = value;
+                }}
+                onSave={async (next) => {
+                  const saved = await mailAPI<Settings>('/settings', 'PUT', next);
+                  if (owner !== epoch.current) throw new Error('Session changed');
+                  setSettings(saved);
+                  return saved;
+                }}
+              />
+            ) : (
+              <section className="wm-mail-surface glass wm-settings-surface">
+                <p role="status">Loading mailbox settings…</p>
+                {error && <p role="alert">{error}</p>}
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    void mailAPI<Settings>('/settings')
+                      .then((result) => {
+                        if (owner === epoch.current) {
+                          setSettings(result);
+                          setSettingsReady(true);
+                        }
+                      })
+                      .catch((err) => setError(err.message));
+                  }}
+                >
+                  Retry settings
+                </button>
+              </section>
+            )
+          ) : view === 'contacts' && !paneOpen ? (
             <section className="wm-mail-surface glass wm-contacts-surface">
               {error && (
                 <p role="alert" className="wm-alert">
@@ -698,7 +788,7 @@ export function Webmail() {
                             : folder === 'inbox'
                               ? 'Your inbox'
                               : 'Sent mail'}
-                      <span>{viewMail.length}</span>
+                      <span>{view === 'conversations' ? personCards.length : viewMail.length}</span>
                     </h1>
                   </div>
                   <button
@@ -738,9 +828,11 @@ export function Webmail() {
                   <span>
                     {search || filterID !== 'all'
                       ? `${visible.length} matching messages`
-                      : folder === 'inbox'
-                        ? `${unread} unread · All messages`
-                        : 'Your sent conversations'}
+                      : view === 'conversations'
+                        ? 'Inbox and Sent together'
+                        : folder === 'inbox'
+                          ? `${unread} unread · All messages`
+                          : 'Your sent conversations'}
                   </span>
                   <span>Newest first</span>
                 </div>
@@ -764,7 +856,11 @@ export function Webmail() {
                 )}
                 <div
                   className="wm-message-list"
-                  aria-label={`${folder === 'inbox' ? 'Inbox' : 'Sent'} messages`}
+                  aria-label={
+                    view === 'conversations'
+                      ? 'People conversations'
+                      : `${folder === 'inbox' ? 'Inbox' : 'Sent'} messages`
+                  }
                 >
                   {loading && mail[folder].length === 0 ? (
                     <div className="wm-list-empty" role="status">
@@ -790,6 +886,51 @@ export function Webmail() {
                         Write a message
                       </button>
                     </div>
+                  ) : view === 'conversations' ? (
+                    personCards.map((person) => (
+                      <button
+                        key={person.address}
+                        className={`wm-message-row ${peer === person.address ? 'selected' : ''} ${person.unread ? 'unread' : ''}`}
+                        aria-pressed={peer === person.address}
+                        onClick={() =>
+                          openMessage(person.latest.id, person.address, person.latest.subject)
+                        }
+                      >
+                        <span className="wm-row-avatar">{initials(person.name)}</span>
+                        <span className="wm-row-content">
+                          <span className="wm-row-heading">
+                            <strong>
+                              {organizer.contacts.find(
+                                (c) => c.email.toLowerCase() === person.address,
+                              )?.name || person.name}
+                            </strong>
+                            <time dateTime={person.latest.date}>
+                              {messageDate(person.latest.date)}
+                            </time>
+                          </span>
+                          <span className="wm-person-address">{person.address}</span>
+                          <span className="wm-row-subject">
+                            {person.latest.subject || '(No subject)'}
+                          </span>
+                          <span className="wm-row-preview">
+                            {person.latest.from.address.toLowerCase() ===
+                            session.user.address.toLowerCase()
+                              ? 'You: '
+                              : ''}
+                            {person.latest.snippet || 'Open this conversation'}
+                          </span>
+                          <small>
+                            {subjects(person.messages).length} subjects · {person.messages.length}{' '}
+                            emails
+                          </small>
+                        </span>
+                        {person.unread > 0 && (
+                          <span className="wm-person-unread" aria-label={`${person.unread} unread`}>
+                            {person.unread}
+                          </span>
+                        )}
+                      </button>
+                    ))
                   ) : (
                     visible.map((item) => (
                       <button
@@ -910,6 +1051,21 @@ export function Webmail() {
                         <Mail size={20} />
                       </span>
                     </header>
+                    {peer && !(draft && !draft.reply_to) && (
+                      <nav className="wm-subject-tabs" aria-label="Conversation subjects">
+                        {topicCards.map((topic) => (
+                          <button
+                            key={topic.key}
+                            aria-pressed={topic.key === topicRef.current}
+                            title={topic.label}
+                            onClick={() => openMessage(topic.latest.id, peer, topic.label)}
+                          >
+                            <span>{topic.label}</span>
+                            <small>{topic.count}</small>
+                          </button>
+                        ))}
+                      </nav>
+                    )}
                     <div className="wm-pane-scroll">
                       {detailLoading ? (
                         <div className="wm-reader-status" role="status">
@@ -937,6 +1093,7 @@ export function Webmail() {
                                   : thread
                               }
                               address={session.user.address}
+                              avatar={settings.avatar}
                               truncated={truncated}
                               onReply={reply}
                               onForward={forward}
@@ -948,6 +1105,7 @@ export function Webmail() {
                               key={`${composeID}:${draft.reply_to || 'new'}`}
                               draft={draft}
                               organizer={organizer}
+                              settings={settings}
                               sender={session.user.address}
                               simulation={session.mode === 'simulation'}
                               onChange={setDraft}
@@ -1003,7 +1161,11 @@ export function Webmail() {
           )}
           {pendingAction && (
             <Modal title="Keep your draft?" onClose={() => setPendingAction(null)}>
-              <p>Discard this draft? It hasn’t been sent.</p>
+              <p>
+                {settingsDirty
+                  ? 'Discard your unsaved settings?'
+                  : 'Discard this draft? It hasn’t been sent.'}
+              </p>
               <div className="wm-discard-actions">
                 <button className="button secondary" onClick={() => setPendingAction(null)}>
                   Keep writing
@@ -1014,6 +1176,7 @@ export function Webmail() {
                     const action = pendingAction;
                     setPendingAction(null);
                     setDraft(null);
+                    setSettingsDirty(false);
                     dirtyRef.current = false;
                     action();
                   }}

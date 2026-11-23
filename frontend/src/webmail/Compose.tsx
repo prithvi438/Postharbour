@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ImagePlus, LoaderCircle, Paperclip, Send, X } from 'lucide-react';
-import { RichEditor } from './RichEditor';
+import { cleanHTML, RichEditor } from './RichEditor';
 import { groupEmails, type Organizer } from './Organizer';
 import { mailAPI } from './api';
+import { htmlText, textHTML, type MailSettings } from './settings';
 import { isPhoto } from './presentation';
 import type { Draft, UploadAttachment } from './types';
 
@@ -37,6 +38,7 @@ export function attachmentBytes(file: UploadAttachment) {
 export function Compose({
   draft,
   organizer,
+  settings,
   sender,
   simulation = true,
   onChange,
@@ -46,6 +48,7 @@ export function Compose({
 }: {
   draft: Draft;
   organizer?: Organizer;
+  settings?: MailSettings;
   sender: string;
   simulation?: boolean;
   onChange: (draft: Draft) => void;
@@ -53,6 +56,7 @@ export function Compose({
   onSent: (id?: string) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
+  const [editorVersion, setEditorVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [toolsTarget, setToolsTarget] = useState<HTMLDivElement | null>(null);
   const [error, setError] = useState('');
@@ -237,9 +241,40 @@ export function Compose({
               </option>
             ))}
           </datalist>
+          {!!settings?.templates.length && (
+            <label className="wm-template-select">
+              Insert template
+              <select
+                aria-label="Insert template"
+                value=""
+                onChange={(e) => {
+                  const template = settings.templates.find((t) => t.id === e.target.value);
+                  if (!template) return;
+                  const html = cleanHTML(
+                    (draft.html || textHTML(draft.text)) + '<br>' + template.html,
+                  );
+                  onChange({
+                    ...draft,
+                    subject: draft.reply_to || draft.subject ? draft.subject : template.subject,
+                    text: htmlText(html),
+                    html,
+                  });
+                  setEditorVersion((v) => v + 1);
+                }}
+              >
+                <option value="">Choose a saved template…</option>
+                {settings.templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="wm-message-label">
             <span className="wm-sr-only">Message</span>
             <RichEditor
+              key={editorVersion}
               toolsTarget={toolsTarget}
               text={draft.text}
               html={draft.html}
@@ -247,6 +282,24 @@ export function Compose({
               onChange={(text, html) => onChange({ ...draft, text, html })}
             />
           </div>
+          {settings?.signature_enabled && settings.signature && (
+            <div className="wm-signature-preview">
+              <label className="wm-check">
+                <input
+                  type="checkbox"
+                  checked={draft.include_signature !== false}
+                  onChange={(e) => onChange({ ...draft, include_signature: e.target.checked })}
+                />{' '}
+                Include my signature
+              </label>
+              {draft.include_signature !== false && (
+                <div
+                  className="wm-formatted"
+                  dangerouslySetInnerHTML={{ __html: cleanHTML(settings.signature) }}
+                />
+              )}
+            </div>
+          )}
           <input
             className="wm-sr-only"
             ref={files}

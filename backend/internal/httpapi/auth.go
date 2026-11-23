@@ -118,6 +118,10 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request, u model.User) e
 	if err != nil {
 		return err
 	}
+	// Load the photo only for the session response, not on every protected API call.
+	if err := s.Service.DB.QueryRow(r.Context(), `SELECT avatar FROM users WHERE id=$1`, u.ID).Scan(&u.Avatar); err != nil {
+		return err
+	}
 	return respond(w, 200, map[string]any{"user": u, "csrf": record.CSRF, "mode": s.Service.Config.Mode, "mail_host": s.Service.Config.MailHost, "webmail_url": s.Service.Config.WebmailURL, "max_mailboxes": s.Service.Config.MaxMailboxes})
 }
 

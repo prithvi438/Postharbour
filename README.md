@@ -349,3 +349,13 @@ This project is [MIT licensed](LICENSE). You may fork, modify, and redistribute 
 application under that license. Dependencies and Stalwart retain their own licenses.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and extension steps,
 and [SECURITY.md](SECURITY.md) for the trust boundaries and reporting guidance.
+
+### People, signatures and templates
+
+Conversations now group sent and received mail by correspondent, with newest-first
+subject tabs inside each person's chat. Mailbox **Settings** provides a private profile
+photo, an automatic rich signature, and reusable templates (including HTML and Word
+`.docx` import). Templates are available in Compose and Reply. Dashboard **Settings**
+has a separate administrator photo. See [native hosting](docs/NATIVE_HOSTING.md#conversations-and-personal-preferences)
+for usage, privacy boundaries and size limits, and [API documentation](docs/API.md)
+for the authenticated endpoints and storage contract.

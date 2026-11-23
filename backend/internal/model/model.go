@@ -6,6 +6,7 @@ import "time"
 // User is a dashboard administrator, not an IMAP mailbox account.
 // Password hashes never leave the store; the API only returns this public view.
 type User struct {
+	Avatar   string `json:"avatar"`
 	ID       string `json:"id"`
 	Email    string `json:"email"`
 	Name     string `json:"name"`

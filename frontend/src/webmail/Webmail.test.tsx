@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mailAPI } from './api';
+import { emptySettings } from './settings';
 import { Webmail } from './Webmail';
 import type { MailDetail, MailSummary } from './types';
 
@@ -53,10 +54,16 @@ function mockMailbox(
       };
     if (path === '/messages?folder=inbox') return { messages: [message] };
     if (path === '/messages?folder=sent') return { messages: [] };
-    if (path === '/messages/m1/conversation') return { messages: [detail], truncated: false };
+    if (
+      path === '/messages/m1/conversation' ||
+      path === '/people?peer=hello%40harbor.test&subject=a+little+hello'
+    )
+      return { messages: [detail], truncated: false };
     if (path === '/organizer')
       return Promise.resolve({ revision: 0, contacts: [], groups: [], flags: {} });
+    if (path.startsWith('/people?')) return { messages: [], truncated: false };
     if (path === '/filters') return { filters: [] };
+    if (path === '/settings') return emptySettings;
     return { ok: true };
   });
 }
@@ -101,7 +108,9 @@ describe('mailbox experience', () => {
     const pending = new Promise<{ messages: MailDetail[] }>((resolve) => {
       finish = resolve;
     });
-    mockMailbox((path) => (path === '/messages/m1/conversation' ? pending : undefined));
+    mockMailbox((path) =>
+      path === '/people?peer=hello%40harbor.test&subject=a+little+hello' ? pending : undefined,
+    );
     render(<Webmail />);
     fireEvent.click(await screen.findByRole('button', { name: /Studio team.*A little hello/ }));
     await screen.findByText('Opening your conversation…');
@@ -114,7 +123,7 @@ describe('mailbox experience', () => {
 
   it('renders incoming content as text and searches only the loaded mailbox', async () => {
     mockMailbox((path) =>
-      path === '/messages/m1/conversation'
+      path === '/people?peer=hello%40harbor.test&subject=a+little+hello'
         ? Promise.resolve({ messages: [{ ...detail, text: '<img src=x onerror=alert(1)>Hello' }] })
         : undefined,
     );
@@ -263,7 +272,7 @@ it('keeps a newly sent message open as a conversation using the returned capture
   };
   mockMailbox((path) => {
     if (path === '/send') return Promise.resolve({ ok: true, id: 'new-capture' });
-    if (path === '/messages/new-capture/conversation')
+    if (path === '/people?peer=hello%40harbor.test&subject=a+new+chat')
       return Promise.resolve({ messages: [sentMessage] });
   });
   render(<Webmail />);
@@ -281,7 +290,7 @@ it('keeps a newly sent message open as a conversation using the returned capture
   await screen.findByText(sentMessage.text);
   expect(screen.queryByRole('region', { name: 'New message composer' })).not.toBeInTheDocument();
   expect(document.body).toHaveClass('wm-pane-open');
-  expect(mailAPI).toHaveBeenCalledWith('/messages/new-capture/conversation');
+  expect(mailAPI).toHaveBeenCalledWith('/people?peer=hello%40harbor.test&subject=a+new+chat');
 });
 
 it('preserves an in-flight reply when a conversation refresh fails and is retried', async () => {
@@ -291,7 +300,7 @@ it('preserves an in-flight reply when a conversation refresh fails and is retrie
     finishSend = resolve;
   });
   mockMailbox((path) => {
-    if (path === '/messages/m1/conversation' && failRefresh)
+    if (path === '/people?peer=hello%40harbor.test&subject=a+little+hello' && failRefresh)
       return Promise.reject(new Error('Conversation refresh failed'));
     if (path === '/send') return sending;
   });
@@ -390,10 +399,13 @@ it('combines and sorts sent/received mail, expands one message, and preserves a 
   );
   render(<Webmail />);
   expect(
-    await screen.findByRole('button', { name: /To: Studio team.*A newer outgoing email/ }),
+    await screen.findByRole('button', { name: /Studio team.*A newer outgoing email/ }),
   ).toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: /Studio team.*A little hello/ })).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: /Studio team.*A little hello/ }));
+  expect(
+    screen.queryByRole('button', { name: /Studio team.*A little hello/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Studio team.*A newer outgoing email/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /A little hello 1/ }));
   fireEvent.click(await screen.findByRole('button', { name: 'Expand email' }));
   expect(document.querySelector('.wm-app')).toHaveClass('wm-expanded');
   fireEvent.click(await screen.findByRole('button', { name: 'Reply' }));
@@ -415,4 +427,62 @@ it('forwards visible content into an editable new-message draft', async () => {
   expect(screen.getByRole('textbox', { name: 'Message' })).toHaveTextContent(
     'Private message body',
   );
+});
+
+it('saves a signature and template, then inserts the template without duplicating the signature in the draft', async () => {
+  let settings = { ...emptySettings };
+  mockMailbox((path, method, body) => {
+    if (path === '/settings') {
+      if (method === 'PUT')
+        settings = { ...(body as typeof settings), revision: settings.revision + 1 };
+      return Promise.resolve(settings);
+    }
+  });
+  render(<Webmail />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(await screen.findByLabelText('Add my signature automatically'));
+  fireEvent.input(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { textContent: 'Best regards, Alex' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'New template' }));
+  fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Welcome note' } });
+  fireEvent.change(screen.getByLabelText('Default subject'), {
+    target: { value: 'Welcome aboard' },
+  });
+  fireEvent.input(screen.getAllByRole('textbox', { name: 'Message' })[1], {
+    target: { textContent: 'Welcome to our team.' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  await screen.findByText('Mailbox settings saved.');
+  fireEvent.click(screen.getByRole('button', { name: 'Compose' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Insert template' }), {
+    target: { value: settings.templates[0].id },
+  });
+  expect(screen.getByRole('textbox', { name: 'Subject' })).toHaveValue('Welcome aboard');
+  expect(screen.getByRole('textbox', { name: 'Message' })).toHaveTextContent(
+    'Welcome to our team.',
+  );
+  expect(screen.getByRole('textbox', { name: 'Message' })).not.toHaveTextContent('Best regards');
+  expect(screen.getByLabelText('Include my signature')).toBeChecked();
+  fireEvent.click(screen.getByLabelText('Include my signature'));
+  fireEvent.change(screen.getByRole('combobox', { name: 'To' }), {
+    target: { value: 'hello@harbor.test' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await screen.findByText('Message sent to the local sandbox.');
+  expect(vi.mocked(mailAPI).mock.calls.find(([path]) => path === '/send')?.[2]).toMatchObject({
+    include_signature: false,
+    text: 'Welcome to our team.',
+  });
+});
+
+it('guards unsaved mailbox settings on navigation', async () => {
+  mockMailbox();
+  render(<Webmail />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(await screen.findByLabelText('Add my signature automatically'));
+  fireEvent.click(screen.getByRole('button', { name: /Inbox/ }));
+  expect(await screen.findByText('Discard your unsaved settings?')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Keep writing' }));
+  expect(screen.getByLabelText('Add my signature automatically')).toBeChecked();
 });

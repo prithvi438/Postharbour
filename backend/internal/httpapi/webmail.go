@@ -31,7 +31,7 @@ type mailboxSession struct {
 }
 type mailboxEndpoint func(http.ResponseWriter, *http.Request, mailboxUser) error
 
-// webmailEnabled prevents this local capture adapter from becoming a live mail API.
+// webmailEnabled requires either a configured local capture adapter or encrypted live sessions.
 func (s *Server) webmailEnabled() error {
 	if s.Service.Config.Mode == "stalwart" {
 		if s.Service.Config.WebmailSessionKey == "" {
@@ -99,7 +99,7 @@ func (s *Server) mailAuth(next mailboxEndpoint) http.HandlerFunc {
 	}
 }
 
-// webmailLogin authenticates a local mailbox without granting any dashboard access.
+// webmailLogin authenticates a mailbox without granting dashboard access.
 func (s *Server) webmailLogin(w http.ResponseWriter, r *http.Request) {
 	if err := s.webmailEnabled(); err != nil {
 		writeError(w, err)
@@ -353,15 +353,17 @@ func (s *Server) webmailPreview(w http.ResponseWriter, r *http.Request, u mailbo
 	return &service.Error{Status: 404, Message: "Attachment not found"}
 }
 
-// webmailSend forces the authenticated sender and accepts only local .test recipients.
+// webmailSend forces the authenticated sender, validates attachments, and applies
+// the saved signature. Only simulation mode restricts recipients to .test.
 func (s *Server) webmailSend(w http.ResponseWriter, r *http.Request, u mailboxUser) error {
 	var in struct {
-		To          string           `json:"to"`
-		Subject     string           `json:"subject"`
-		Text        string           `json:"text"`
-		HTML        string           `json:"html"`
-		ReplyTo     string           `json:"reply_to"`
-		Attachments []webmail.Upload `json:"attachments"`
+		To               string           `json:"to"`
+		Subject          string           `json:"subject"`
+		Text             string           `json:"text"`
+		HTML             string           `json:"html"`
+		ReplyTo          string           `json:"reply_to"`
+		Attachments      []webmail.Upload `json:"attachments"`
+		IncludeSignature *bool            `json:"include_signature"`
 	}
 	if err := decodeLimit(w, r, &in, 8<<20); err != nil {
 		return err
@@ -404,6 +406,14 @@ func (s *Server) webmailSend(w http.ResponseWriter, r *http.Request, u mailboxUs
 			return captureUnavailable()
 		}
 		replyID = detail.MessageID
+	}
+	settings, err := s.readMailSettings(r.Context(), u.ID)
+	if err != nil {
+		return err
+	}
+	in.Text, in.HTML = appendSignature(in.Text, in.HTML, settings, in.IncludeSignature)
+	if len(in.Text) > 17000 || len(in.HTML) > 60000 {
+		return &service.Error{Status: 400, Message: "Message and signature are too large"}
 	}
 	id, err := u.mail.Send(r.Context(), webmail.Address{Name: u.Name, Address: u.Address}, to, in.Subject, in.Text, replyID, in.Attachments, in.HTML)
 	if err != nil {

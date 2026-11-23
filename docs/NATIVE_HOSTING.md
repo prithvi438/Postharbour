@@ -119,3 +119,35 @@ The hook reads the private app environment and `engine_certificate_id` from
 `/root/postharbor-access.json`, updates that existing certificate through the
 loopback management API, and restarts Stalwart. Active mail-client connections
 will reconnect during that restart. It ignores renewals for other domains.
+
+## Conversations and personal preferences
+
+The **Conversations** tab shows one card per correspondent email address, combining
+Inbox and Sent. Opening a person selects their newest subject. Subject chips above
+that chat switch to older topics. Group messages may appear under each visible
+recipient; message details preserve the original To addresses. Search and filter
+chips narrow the person cards using matching messages. Topics are a presentation
+view; sending a reply still preserves the real email's Message-ID/reference headers.
+The live 200-message window and 50-message topic limit still apply.
+
+In **Mail → Settings**, upload your mailbox photo, enable a default rich signature,
+and create/edit/delete up to 30 templates. Click **Save settings** to persist changes.
+Compose and Reply offer **Insert template**. Inserting a template appends its body
+and fills an empty new-message subject; it does not replace a reply's subject or
+existing text. The signature is previewed separately and can be omitted for one
+message. Account photos are local to Postharbor; Gmail and other recipients decide
+which sender image to display.
+
+Template import accepts `.html`, `.htm`, `.txt`, and Word `.docx` files up to 1 MiB.
+Word conversion runs in a browser worker with a ten-second deadline, a bounded ZIP
+expansion, no external file access, and embedded style maps disabled. The original
+file is not uploaded. Basic paragraphs, emphasis, headings, lists and tables survive;
+custom styles, scripts, images and links are removed by the shared sanitizer.
+Legacy `.doc` files must be saved as `.docx` first; formatted Word text can also be
+pasted directly into the editor. Conversion uses
+[Mammoth](https://github.com/mwilliamson/mammoth.js); final HTML is sanitized again by Go.
+
+Dashboard administrators can upload a separate photo under **Settings → Administrator
+photo**. This identity is independent of a mailbox even if their email addresses match.
+Migration `007_mail_personalization.sql` adds mailbox preferences and the administrator
+photo column. It is additive and included in the normal PostgreSQL backup.

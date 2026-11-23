@@ -26,3 +26,12 @@ func SafeHTML(input string) string {
 	out.WriteString(html.EscapeString(html.UnescapeString(input[cursor:])))
 	return out.String()
 }
+
+// PlainText makes a readable alternative for a sanitized signature's HTML body.
+func PlainText(value string) string {
+	safe := SafeHTML(value)
+	for _, tag := range []string{"<br>", "</p>", "</div>", "</li>", "</tr>", "<hr>"} {
+		safe = strings.ReplaceAll(safe, tag, "\n")
+	}
+	return strings.TrimSpace(html.UnescapeString(markupToken.ReplaceAllString(safe, "")))
+}

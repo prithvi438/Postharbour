@@ -229,6 +229,49 @@ func TestWebmailIsolationAndCompose(t *testing.T) {
 	if reference != "<original@studio.test>" {
 		t.Fatal("reply reference missing")
 	}
+	// Settings persist per mailbox, enforce CSRF and reject a stale revision.
+	settings := map[string]any{"revision": 0, "avatar": "", "signature": "<p>Easyhai signature</p>", "signature_enabled": true, "templates": []map[string]string{{"id": "welcome", "name": "Welcome", "subject": "Hello", "html": "<p onclick=bad()>Welcome</p>"}}}
+	want(t, owner.request("GET", "/api/webmail/settings", nil), 401)
+	want(t, noCSRF.request("PUT", "/api/webmail/settings", settings), 403)
+	want(t, alex.request("PUT", "/api/webmail/settings", settings), 200)
+	want(t, alex.request("PUT", "/api/webmail/settings", settings), 409)
+	w = alex.request("GET", "/api/webmail/settings", nil)
+	if strings.Contains(w.Body.String(), "onclick") || !strings.Contains(w.Body.String(), "Welcome") {
+		t.Fatal("settings sanitization failed")
+	}
+	w = hello.request("GET", "/api/webmail/settings", nil)
+	if strings.Contains(w.Body.String(), "Easyhai signature") {
+		t.Fatal("settings crossed mailbox boundary")
+	}
+	want(t, alex.request("POST", "/api/webmail/send", map[string]string{"to": "hello@studio.test", "subject": "Signed", "text": "Hello"}), 200)
+	mu.Lock()
+	signed := sent["Text"].(string)
+	mu.Unlock()
+	if strings.Count(signed, "Easyhai signature") != 1 {
+		t.Fatal("saved signature was not added exactly once")
+	}
+	want(t, alex.request("POST", "/api/webmail/send", map[string]any{"to": "hello@studio.test", "subject": "Unsigned", "text": "Hello", "include_signature": false}), 200)
+	mu.Lock()
+	unsigned := sent["Text"].(string)
+	mu.Unlock()
+	if strings.Contains(unsigned, "Easyhai signature") {
+		t.Fatal("per-message signature opt-out ignored")
+	}
+	w = alex.request("GET", "/api/webmail/people?peer=customer%40outside.test&subject=Re%3A%20message%20incoming", nil)
+	want(t, w, 200)
+	var personThread webmail.Conversation
+	json.Unmarshal(w.Body.Bytes(), &personThread)
+	if len(personThread.Messages) != 1 || personThread.Messages[0].ID != "incoming" {
+		t.Fatal("person subject grouping incorrect")
+	}
+	w = alex.request("GET", "/api/webmail/people?peer=other%40private.test&subject=Message%20private", nil)
+	want(t, w, 200)
+	json.Unmarshal(w.Body.Bytes(), &personThread)
+	if len(personThread.Messages) != 0 {
+		t.Fatal("person grouping leaked another mailbox")
+	}
+	want(t, owner.request("PUT", "/api/account/profile", map[string]string{"avatar": "data:image/svg+xml;base64,PHN2Zz4="}), 400)
+	want(t, owner.request("PUT", "/api/account/profile", map[string]string{"avatar": ""}), 200)
 	// Saved view writes are scoped by the cookie's mailbox, never a browser owner ID.
 
 	// Address books, groups, and flags persist privately with optimistic revision checks.
