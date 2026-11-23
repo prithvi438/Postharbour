@@ -1,10 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { PublicDocumentation } from './documentation/Documentation';
 import { App } from './App';
 import { Webmail } from './webmail/Webmail';
 import './styles.css';
 
 // Mailbox users get a separate entry and install identity from the admin dashboard.
+const isDocs = location.pathname === '/docs' || location.pathname === '/docs/';
+if (isDocs) document.title = 'Connect your domain · Postharbor documentation';
 const isMail = location.pathname === '/mail' || location.pathname === '/mail/';
 if (isMail) {
   document.title = 'Postharbor Mail';
@@ -12,7 +15,9 @@ if (isMail) {
 }
 // main.tsx mounts the selected React application into index.html's single root element.
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>{isMail ? <Webmail /> : <App />}</React.StrictMode>,
+  <React.StrictMode>
+    {isDocs ? <PublicDocumentation /> : isMail ? <Webmail /> : <App />}
+  </React.StrictMode>,
 );
 
 // Service workers are production-only so a development build cannot become stale.

@@ -313,6 +313,12 @@ function DNSDialog({
       subtitle="Verify ownership, then configure delivery."
       onClose={close}
     >
+      <p className="notice">
+        Need help with your DNS provider?{' '}
+        <a href="/docs" target="_blank" rel="noreferrer">
+          Open the illustrated domain setup guide ↗
+        </a>
+      </p>
       <div className="dns-step">
         <span className="eyebrow">1 · PROVE OWNERSHIP</span>
         <p>Add this TXT record at your DNS provider.</p>

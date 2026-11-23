@@ -56,7 +56,7 @@ export interface DNSInfo {
   zone: string;
   note: string;
 }
-export type Page = 'overview' | 'domains' | 'mailboxes' | 'activity' | 'settings';
+export type Page = 'overview' | 'domains' | 'mailboxes' | 'activity' | 'settings' | 'documentation';
 
 /** Convert allocated MiB into a display label, without implying actual disk use. */
 export function storageLabel(mib: number): string {

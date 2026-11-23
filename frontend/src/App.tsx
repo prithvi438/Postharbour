@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  BookOpen,
   ArrowUpRight,
   ChevronDown,
   Download,
@@ -24,6 +25,7 @@ import { Brand, Empty, Modal } from './components/ui';
 import { ResourceDialogs, type ActionDialog } from './components/ResourceDialogs';
 import { Login } from './pages/Login';
 import { ProfilePhoto } from './components/ProfilePhoto';
+import { Documentation } from './documentation/Documentation';
 import { Workspace } from './pages/Workspace';
 
 const navigation: { id: Page; label: string; icon: typeof Mail }[] = [
@@ -32,6 +34,7 @@ const navigation: { id: Page; label: string; icon: typeof Mail }[] = [
   { id: 'mailboxes', label: 'Mailboxes', icon: Mail },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'documentation', label: 'Documentation', icon: BookOpen },
 ];
 
 /** pageFromHash preserves browser Back/Forward without needing a routing dependency. */
@@ -219,6 +222,9 @@ export function App() {
       <>
         <Login onLogin={loadSession} />
         <div className="login-footer">
+          <a className="text-button" href="/docs">
+            <BookOpen size={17} /> Domain setup guide
+          </a>
           <button className="text-button" onClick={toggleTheme}>
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{' '}
             {theme === 'dark' ? 'Light' : 'Dark'} mode
@@ -434,7 +440,16 @@ export function App() {
               </button>
             </div>
           )}
-          {!tenant ? (
+          {page === 'documentation' ? (
+            <Documentation
+              key={tenantId}
+              session={session}
+              tenant={tenant}
+              domains={domains}
+              open={setAction}
+              navigate={navigate}
+            />
+          ) : !tenant ? (
             <section className="glass panel">
               <Empty
                 title="Every business needs a home"

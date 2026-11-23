@@ -359,3 +359,19 @@ photo, an automatic rich signature, and reusable templates (including HTML and W
 has a separate administrator photo. See [native hosting](docs/NATIVE_HOSTING.md#conversations-and-personal-preferences)
 for usage, privacy boundaries and size limits, and [API documentation](docs/API.md)
 for the authenticated endpoints and storage contract.
+
+### Customer domain setup documentation
+
+Open **Documentation** in the administrator sidebar for the illustrated onboarding
+guide. The same guide is publicly shareable at `/docs` before a customer signs in.
+It covers accounts/passwords, ownership verification, Hostinger screenshots,
+Cloudflare/other providers, DNS record purposes, mailbox creation, migration order,
+mail-client settings, delivery tests, and troubleshooting. **Print / save PDF** makes
+a paper-friendly copy. Signed-in administrators can select a domain, copy its actual
+TXT/MX values and download DNS notes; the public guide never fetches account data.
+
+The guide is maintained in `frontend/src/documentation/Documentation.tsx` and uses
+existing tenant-authorized DNS APIs. `dnsRecords.ts` presents supported explicit
+TXT/MX zone records without inventing keys; the original provider zone is always
+available for additional/unrecognized syntax. Provider screenshots and attribution
+live in `frontend/public/docs/`. See [the maintainer notes](docs/DOMAIN_GUIDE.md).
